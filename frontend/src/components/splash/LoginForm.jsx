@@ -34,7 +34,6 @@ function Login(){
             <Row className="justify-content-md-center mt-5">
                 <Col xs={12} md={6}>
                     <h2 className='text-center mb-4'>Login</h2>
-                    {error && <Alert variant="danger">{error}</Alert>}
                     <Form onSubmit={handleSubmit}>
                         <Form.Group className="mb-3" controlId="formBasicEmail">
                         <Form.Label>Email address</Form.Label>
