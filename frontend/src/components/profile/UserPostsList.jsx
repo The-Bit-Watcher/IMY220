@@ -2,7 +2,7 @@
 //this way user will always know who it is if he forgets or looks away or scroll too far away.
 
 
-import React, {useEffect, useState} from 'react';
+import {useEffect, useState} from 'react';
 import {PostPreview} from '../common/PostPreview';
 import {posts} from '../../data/mockPosts'
 
