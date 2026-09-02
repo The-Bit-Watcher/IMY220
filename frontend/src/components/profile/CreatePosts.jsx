@@ -58,19 +58,21 @@ function CreatePost({show, onHide, onPostCreated, currentUserId = 1}){
         setError(null);
 
         const newPost = {
-            id: Date.now(), // Temporary unique key
+            id: Date.now(),
             userId: currentUserId,
             title,
             content,
             category,
-            imageFile: image,
-            img: imagePreview || null, // Will hold file URL or backend image link
+            imageFile: imagePreview || null,
+            imgage: image,
             likes: 0,
             dates: new Date().toISOString().split('T')[0]
         };
 
         try {
             await Promise.resolve(newPost);
+
+            posts.unshift(newPost);
 
             if (onPostCreated){
                 onPostCreated(newPost);

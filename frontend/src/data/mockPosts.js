@@ -51,3 +51,16 @@ export const posts = [
     likes: 19,
   },
 ];
+
+export const reportReasons = [
+  "Inappropriate Content",
+  "Spam or Misleading",
+  "Harassment or Bullying",
+  "Intellectual Property Violation",
+  "Hate Speech"
+];
+
+export const albums = [
+  { id: 101, title: "React Dev Journey", userId: 1, postIds: [1, 6] },
+  { id: 102, title: "Coursework", userId: 2, postIds: [2] }
+];
