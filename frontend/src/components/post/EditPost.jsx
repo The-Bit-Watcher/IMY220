@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, Form, Button } from 'react-bootstrap';
 
-function EditPostModal({ show, onHide, post, onSave }) {
+function EditPost({ show, onHide, post, onSave }) {
   const [caption, setCaption] = useState(post?.caption || '');
   const [hashtags, setHashtags] = useState(
     Array.isArray(post?.hashtags) ? post.hashtags.join(' ') : post?.hashtags || ''
@@ -67,4 +67,4 @@ function EditPostModal({ show, onHide, post, onSave }) {
   );
 }
 
-export default EditPostModal;
+export default EditPost;
