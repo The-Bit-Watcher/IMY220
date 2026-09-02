@@ -1,0 +1,58 @@
+export const comments = [
+  {
+    id: 1,
+    postId: 1,
+    userId: 2,
+    text: "Looks great! Keep it up.",
+    createdAt: "2026-09-01T11:00:00",
+  },
+  {
+    id: 2,
+    postId: 1,
+    userId: 3,
+    text: "React projects are always fun to work on.",
+    createdAt: "2026-09-01T11:30:00",
+  },
+  {
+    id: 3,
+    postId: 2,
+    userId: 1,
+    text: "Nice! Glad you got it finished.",
+    createdAt: "2026-08-31T19:10:00",
+  },
+  {
+    id: 4,
+    postId: 2,
+    userId: 4,
+    text: "Well done!",
+    createdAt: "2026-08-31T19:25:00",
+  },
+  {
+    id: 5,
+    postId: 3,
+    userId: 5,
+    text: "Component architecture can be tricky at first.",
+    createdAt: "2026-08-30T15:00:00",
+  },
+  {
+    id: 6,
+    postId: 3,
+    userId: 1,
+    text: "Agreed. I'm learning a lot from it.",
+    createdAt: "2026-08-30T15:20:00",
+  },
+  {
+    id: 7,
+    postId: 4,
+    userId: 2,
+    text: "PostgreSQL is really powerful.",
+    createdAt: "2026-08-29T10:00:00",
+  },
+  {
+    id: 8,
+    postId: 5,
+    userId: 3,
+    text: "The design looks really clean!",
+    createdAt: "2026-08-28T17:00:00",
+  },
+];
