@@ -1,7 +1,8 @@
 import React, {useState} from "react";
 import {Modal, Form, Button, Alert, Image, Spinner} from 'react-bootstrap';
+import { posts } from '../../data/mockPosts';
 
-function createPost({show, onHide, onPostCreated, currentUserId = 1}){
+function CreatePost({show, onHide, onPostCreated, currentUserId = 1}){
 
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
@@ -62,6 +63,7 @@ function createPost({show, onHide, onPostCreated, currentUserId = 1}){
             title,
             content,
             category,
+            imageFile: image,
             img: imagePreview || null, // Will hold file URL or backend image link
             likes: 0,
             dates: new Date().toISOString().split('T')[0]
@@ -145,7 +147,7 @@ function createPost({show, onHide, onPostCreated, currentUserId = 1}){
                             onChange={handleImageChange}
                         />
                     </Form.Group>
-                    
+
                     {imagePreview && (
                         <div className="position-relative mb-3 text-center border rounded p-2 bg-light">
                             <Image src={imagePreview} alt="Preview" fluid style={{ maxHeight: '200px' }} />
@@ -182,4 +184,4 @@ function createPost({show, onHide, onPostCreated, currentUserId = 1}){
 
 }
 
-export default createPost;
+export default CreatePost;
