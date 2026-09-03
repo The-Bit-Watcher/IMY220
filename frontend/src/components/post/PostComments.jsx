@@ -1,13 +1,17 @@
-import React, {useState} from 'React';
-import {Form, Button, ListGroup, InputGroup} from 'react-bootstrap';
-import users from '../../data/mockProfile';
-import comments from '../../data/mockComments';
+import React, { useState } from 'react';
 
-function PostComments({postId, currentUserId = 1, limit = null, onViewAllClick}){
-    const [commentText, setCommentText] = useState('');
-    const [,forceUpdate] = useState({});
+function PostComments({ 
+  postId, 
+  comments = [], 
+  users = [], 
+  currentUserId = 1, 
+  onAddComment, 
+  limit = null, 
+  onViewAllClick 
+}){
+  const [commentText, setCommentText] = useState('');
 
-    const postComments = comments.filter(c => c.postId === postId);
+  const postComments = comments.filter(c => c.postId === postId);
   const displayedComments = limit ? postComments.slice(0, limit) : postComments;
   const hasMore = limit && postComments.length > limit;
 
@@ -23,57 +27,57 @@ function PostComments({postId, currentUserId = 1, limit = null, onViewAllClick})
       createdAt: new Date().toISOString()
     };
 
-    comments.unshift(newComment);
+    if (onAddComment) {
+      onAddComment(newComment);
+    }
     setCommentText('');
-    forceUpdate({});
   };
 
-    return (
-        <div className="post-comments-section mt-3">
-        <ListGroup variant="flush" className="mb-2">
-            {displayedComments.length === 0 ? (
-            <div className="text-muted small italic py-1">No comments yet.</div>
-            ) : (
-            displayedComments.map(comment => {
-                const author = users.find(u => u.id === comment.userId);
-                const authorName = author ? author.name : `User ${comment.userId}`;
+  return (
+    <div className="mt-3">
+      <div className="space-y-1 mb-2">
+        {displayedComments.length === 0 ? (
+          <div>No comments yet.</div>
+        ) : (
+          displayedComments.map(comment => {
+            const author = users.find(u => u.id === comment.userId);
+            const authorName = author ? author.name : `User ${comment.userId}`;
 
-                return (
-                <ListGroup.Item key={comment.id} className="px-0 py-1 bg-transparent border-0 small">
-                    <strong>{authorName}: </strong>
-                    <span>{comment.text}</span>
-                </ListGroup.Item>
-                );
-            })
-            )}
-        </ListGroup>
-
-        {hasMore && onViewAllClick && (
-            <Button 
-            variant="link" 
-            size="sm" 
-            className="p-0 text-decoration-none text-muted mb-2 small d-block" 
-            onClick={onViewAllClick}
-            >
-            View all {postComments.length} comments...
-            </Button>
+            return (
+              <div key={comment.id} className="text-xs text-gray-800 py-0.5">
+                <span>{authorName}:</span>
+                <span>{comment.text}</span>
+              </div>
+            );
+          })
         )}
+      </div>
 
-        <Form onSubmit={handleSubmit}>
-            <InputGroup size="sm">
-            <Form.Control
-                placeholder="Add a comment..."
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-            />
-            <Button variant="outline-primary" type="submit" disabled={!commentText.trim()}>
-                Post
-            </Button>
-            </InputGroup>
-        </Form>
-        </div>
-    );
+      {hasMore && onViewAllClick && (
+        <button 
+          type="button" 
+          onClick={onViewAllClick}
+        >
+          View all {postComments.length} comments...
+        </button>
+      )}
+
+      <form onSubmit={handleSubmit} className="flex gap-1">
+        <input
+          type="text"
+          placeholder="Add a comment..."
+          value={commentText}
+          onChange={(e) => setCommentText(e.target.value)}
+        />
+        <button 
+          type="submit" 
+          disabled={!commentText.trim()}
+        >
+          Post
+        </button>
+      </form>
+    </div>
+  );
 }
 
 export default PostComments;
-

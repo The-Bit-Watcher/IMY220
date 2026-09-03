@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import { Card, Badge, Dropdown } from 'react-bootstrap';
+import React, { useState, useRef, useEffect } from 'react';
 import PostImage from './PostImage';
 import PostComments from './PostComments';
 import EditPostModal from './EditPostModal';
@@ -20,32 +19,45 @@ function PostCard({
 }) {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef(null);
 
   const postAuthor = users.find(u => u.id === post.userId) || { name: 'Unknown User' };
   const isOwner = post.userId === currentUser.id;
+  const postText = post.caption || post.content || '';
+  const postImg = post.image || post.imageFile || null;
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const renderHashtags = () => {
     let tags = [];
     if (Array.isArray(post.hashtags)) {
       tags = post.hashtags;
-    } else if (post.caption) {
-      tags = post.caption.match(/#\w+/g) || [];
+    } else if (postText) {
+      tags = postText.match(/#\w+/g) || [];
     }
 
     return tags.map((tag, idx) => (
-      <Badge 
+      <span 
         key={idx} 
-        bg="info" 
-        className="me-1 text-dark" 
-        style={{ cursor: 'pointer' }}
         onClick={() => onHashtagClick && onHashtagClick(tag)}
       >
         {tag.startsWith('#') ? tag : `#${tag}`}
-      </Badge>
+      </span>
     ));
   };
 
   const handleDelete = () => {
+    setShowDropdown(false);
     if (window.confirm("Are you sure you want to delete this post? This action cannot be undone.")) {
       if (onDeletePost) {
         onDeletePost(post.id);
@@ -54,43 +66,60 @@ function PostCard({
   };
 
   return (
-    <Card className="mb-4 shadow-sm">
-      <Card.Header className="d-flex justify-content-between align-items-center bg-white border-bottom-0 pt-3">
+    <div>
+      <div>
         <div>
-          <h6 className="mb-0 fw-bold">{postAuthor.name}</h6>
-          <small className="text-muted">
+          <h6>{postAuthor.name}</h6>
+          <span className="text-xs text-gray-500">
             {post.createdAt ? new Date(post.createdAt).toLocaleDateString() : 'Recently'}
-          </small>
+          </span>
         </div>
 
-        <Dropdown align="end">
-          <Dropdown.Toggle variant="light" size="sm" className="border-0 bg-transparent py-0">
-            ⋮
-          </Dropdown.Toggle>
-          <Dropdown.Menu>
-            {isOwner ? (
-              <>
-                <Dropdown.Item onClick={() => setShowEditModal(true)}>Edit Post</Dropdown.Item>
-                <Dropdown.Item onClick={handleDelete} className="text-danger">Delete Post</Dropdown.Item>
-              </>
-            ) : (
-              <Dropdown.Item onClick={() => setShowReportModal(true)} className="text-warning">
-                Report Post
-              </Dropdown.Item>
-            )}
-          </Dropdown.Menu>
-        </Dropdown>
-      </Card.Header>
+        <div className="relative" ref={dropdownRef}>
+          <button 
+            type="button"
+            onClick={() => setShowDropdown(!showDropdown)}
+          >
+            &#8285;
+          </button>
+          
+          {showDropdown && (
+            <div>
+              {isOwner ? (
+                <>
+                  <button 
+                    onClick={() => { setShowEditModal(true); setShowDropdown(false); }}
+                  >
+                    Edit Post
+                  </button>
+                  <button 
+                    onClick={handleDelete}
+                  >
+                    Delete Post
+                  </button>
+                </>
+              ) : (
+                <button 
+                  onClick={() => { setShowReportModal(true); setShowDropdown(false); }}
+                >
+                  Report Post
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
 
-      <Card.Body className="pt-2">
-        <p className="card-text mb-2">{post.caption}</p>
+      <div className="p-4 pt-0">
+        {post.title && <h5>{post.title}</h5>}
+        <p className="text-sm text-gray-700 mb-2">{postText}</p>
 
         <div className="mb-3">{renderHashtags()}</div>
 
-        {post.image && (
+        {postImg && (
           <PostImage 
-            src={post.image} 
-            alt={post.caption} 
+            src={postImg} 
+            alt={postText || "Post image"} 
             onClick={() => onPostClick && onPostClick(post.id)} 
           />
         )}
@@ -99,12 +128,12 @@ function PostCard({
           postId={post.id}
           comments={comments}
           currentUserId={currentUser.id}
-          currentUserName={currentUser.name}
           onAddComment={onAddComment}
+          users={users}
           limit={2}
           onViewAllClick={() => onPostClick && onPostClick(post.id)}
         />
-      </Card.Body>
+      </div>
 
       {isOwner && (
         <EditPostModal
@@ -124,7 +153,7 @@ function PostCard({
           onSubmitReport={onReportPost}
         />
       )}
-    </Card>
+    </div>
   );
 }
 

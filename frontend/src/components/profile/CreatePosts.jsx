@@ -1,189 +1,198 @@
-import React, {useState} from "react";
-import {Modal, Form, Button, Alert, Image, Spinner} from 'react-bootstrap';
-import { posts } from '../../data/mockPosts';
+import React, { useState, useRef } from "react";
 
-function CreatePost({show, onHide, onPostCreated, currentUserId = 1}){
+function CreatePosts({ show, onHide, onPostCreated, currentUserId = 1 }) {
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [category, setCategory] = useState('General');
+  const [image, setImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
 
-    const [title, setTitle] = useState('');
-    const [content, setContent] = useState('');
-    const [category, setCategory] = useState('General');
-    const [image, setImage] = useState(null);
-    const [imagePreview, setImagePreview] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState(null);
 
-    const [validated, setValidated] = useState(false);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [error, setError] = useState(null);
+  const fileInputRef = useRef(null);
 
-    const handleImageChange = (e) => {
-        const file = e.target.files[0];
+  if (!show) return null;
 
-        if (file){
-            setImage(file);
-            setImagePreview(URL.createObjectURL(file));
-        }
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setImage(null);
+      setImagePreview(null);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setImage(null);
+    setImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const resetForm = () => {
+    setTitle('');
+    setContent('');
+    setCategory('General');
+    setImage(null);
+    setImagePreview(null);
+    setError(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleClose = () => {
+    resetForm();
+    onHide();
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!title || title.length < 3) {
+      setError('Please provide a post title (at least 3 characters).');
+      return;
+    }
+    if (!content) {
+      setError('Post content cannot be empty.');
+      return;
     }
 
-    const handleRemoveImage = () => {
-        setImage(null);
-        setImagePreview(null);
-    }
+    setIsSubmitting(true);
+    setError(null);
 
-    const resetForm = () => {
-        setTitle('');
-        setContent('');
-        setCategory('General');
-        setImage(null);
-        setImagePreview(null);
-        setValidated(false);
-        setError(null);
-    }
-
-    const handleClose = () => {
-        resetForm();
-        onHide();
-    }
-
-    const handleSubmit = async (event) => {
-        event.preventDefault();
-        const form = event.currentTarget;
-
-        if (form.checkValidity() === false){
-            event.stopPropagation();
-            setValidated(true);
-            return;
-        }
-
-        setValidated(true);
-        setIsSubmitting(true);
-        setError(null);
-
-        const newPost = {
-            id: Date.now(),
-            userId: currentUserId,
-            title,
-            content,
-            category,
-            imageFile: imagePreview || null,
-            imgage: image,
-            likes: 0,
-            dates: new Date().toISOString().split('T')[0]
-        };
-
-        try {
-            await Promise.resolve(newPost);
-
-            posts.unshift(newPost);
-
-            if (onPostCreated){
-                onPostCreated(newPost);
-            }
-
-            handleClose();
-        } catch (error) {
-            console.error(error);
-            setError('Failed to create post. Please try again')
-        } finally {
-            setIsSubmitting(false);
-        }
+    const newPost = {
+      id: Date.now(),
+      userId: currentUserId,
+      title,
+      content,
+      caption: content,
+      category,
+      imageFile: imagePreview,
+      image: imagePreview,
+      likes: 0,
+      createdAt: new Date().toISOString()
     };
 
-    return (
-        <Modal show={show} onHide={handleClose} centered backdrop="static">
-            <Modal.Header closeButton>
-                <Modal.Title>Create New Post</Modal.Title>
-            </Modal.Header>
+    try {
+      if (onPostCreated) {
+        onPostCreated(newPost);
+      }
+      handleClose();
+    } catch (err) {
+      console.error(err);
+      setError('Failed to create post. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
-            <Form noValidate validated={validated} onSubmit={handleSubmit}>
-                <Modal.Body>
-                    {error && <Alert variant="danger">{error}</Alert>}
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex justify-between items-center px-4 py-3 border-b">
+          <h3 className="text-lg font-semibold text-gray-800">Create New Post</h3>
+          <button onClick={handleClose} className="text-gray-400 hover:text-gray-600 text-xl font-bold">&times;</button>
+        </div>
 
-                    <Form.Group className="mb-3" controlId="postTitle">
-                        <Form.Label className="fw-semibold">Title</Form.Label>
-                        <Form.Control
-                            type="text"
-                            placeholder="What's on your mind?"
-                            value={title}
-                            onChange={(e) => setTitle(e.target.value)}
-                            required
-                            minLength={3}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                            Please provide a post title (at least 3 characters).
-                        </Form.Control.Feedback>
-                    </Form.Group>
+        {/* Body */}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+          <div className="p-4 space-y-4 overflow-y-auto flex-1">
+            {error && <div className="bg-red-50 text-red-600 border border-red-200 p-2 text-sm rounded">{error}</div>}
 
-                    <Form.Group className="mb-3" controlId="postCategory">
-                        <Form.Label className="fw-semibold">Category</Form.Label>
-                        <Form.Select 
-                            value={category} 
-                            onChange={(e) => setCategory(e.target.value)}
-                        >
-                            <option value="General">General</option>
-                            <option value="Technology">Technology</option>
-                            <option value="Design">Design</option>
-                            <option value="Tutorial">Tutorial</option>
-                            <option value="Personal">Personal</option>
-                        </Form.Select>
-                    </Form.Group>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Title</label>
+              <input
+                type="text"
+                className="w-full border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="What's on your mind?"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </div>
 
-                    <Form.Group className="mb-3" controlId="postContent">
-                        <Form.Label className="fw-semibold">Content</Form.Label>
-                        <Form.Control
-                            as="textarea"
-                            rows={4}
-                            placeholder="Write your post details here..."
-                            value={content}
-                            onChange={(e) => setContent(e.target.value)}
-                            required
-                        />
-                        <Form.Control.Feedback type="invalid">
-                            Post content cannot be empty.
-                        </Form.Control.Feedback>
-                    </Form.Group>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Category</label>
+              <select 
+                value={category} 
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="General">General</option>
+                <option value="Technology">Technology</option>
+                <option value="Design">Design</option>
+                <option value="Tutorial">Tutorial</option>
+                <option value="Personal">Personal</option>
+              </select>
+            </div>
 
-                    <Form.Group className="mb-3" controlId="postImage">
-                        <Form.Label className="fw-semibold">Attach Image (Optional)</Form.Label>
-                        <Form.Control
-                            type="file"
-                            accept="image/*"
-                            onChange={handleImageChange}
-                        />
-                    </Form.Group>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Content</label>
+              <textarea
+                rows={4}
+                className="w-full border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="Write your post details here..."
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+              />
+            </div>
 
-                    {imagePreview && (
-                        <div className="position-relative mb-3 text-center border rounded p-2 bg-light">
-                            <Image src={imagePreview} alt="Preview" fluid style={{ maxHeight: '200px' }} />
-                            <Button
-                                variant="danger"
-                                size="sm"
-                                className="position-absolute top-0 end-0 m-2"
-                                onClick={handleRemoveImage}
-                            >
-                                ✕ Remove
-                            </Button>
-                        </div>
-                    )}
-                </Modal.Body>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Attach Image</label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageChange}
+                className="block w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              />
+            </div>
 
-                <Modal.Footer>
-                    <Button variant="secondary" onClick={handleClose} disabled={isSubmitting}>
-                        Cancel
-                    </Button>
-                    <Button variant="primary" type="submit" disabled={isSubmitting}>
-                        {isSubmitting ? (
-                            <>
-                                <Spinner animation="border" size="sm" className="me-2" />
-                                Publishing...
-                            </>
-                        ) : (
-                            'Publish Post'
-                        )}
-                    </Button>
-                </Modal.Footer>
-            </Form>
-        </Modal>
-    );
+            {imagePreview && (
+              <div className="relative border rounded p-2 bg-gray-50 flex justify-center">
+                <img src={imagePreview} alt="Preview" className="max-h-48 object-contain rounded" />
+                <button
+                  type="button"
+                  className="absolute top-2 right-2 bg-red-600 text-white text-xs px-2 py-1 rounded hover:bg-red-700"
+                  onClick={handleRemoveImage}
+                >
+                  ✕ Remove
+                </button>
+              </div>
+            )}
+          </div>
 
+          {/* Footer */}
+          <div className="flex justify-end gap-2 px-4 py-3 bg-gray-50 border-t">
+            <button 
+              type="button" 
+              className="px-3 py-1.5 border border-gray-300 rounded text-sm text-gray-700 hover:bg-gray-100" 
+              onClick={handleClose} 
+              disabled={isSubmitting}
+            >
+              Cancel
+            </button>
+            <button 
+              type="submit" 
+              className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50" 
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Publishing...' : 'Publish Post'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }
 
-export default CreatePost;
+export default CreatePosts;

@@ -1,20 +1,18 @@
 import React from 'react';
-import { Image as BsImage } from 'react-bootstrap';
 
 function PostImage({ src, alt = "Post image", className = "", onClick }) {
   if (!src) return null;
 
   return (
     <div 
-      className={`post-image-container overflow-hidden bg-dark text-center rounded ${className}`} 
+      className={`overflow-hidden bg-gray-900 rounded max-h-[500px] flex items-center justify-center ${className}`} 
       onClick={onClick}
-      style={{ cursor: onClick ? 'pointer' : 'default', maxHeight: '500px' }}
+      style={{ cursor: onClick ? 'pointer' : 'default' }}
     >
-      <BsImage
+      <img
         src={src}
         alt={alt}
-        fluid
-        style={{ objectFit: 'contain', maxHeight: '500px', width: '100%' }}
+        className="max-h-[500px] w-full object-contain"
       />
     </div>
   );
