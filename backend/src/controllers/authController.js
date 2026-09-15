@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const crypto = require("crypto");
 
-function createJWT({userId,email}) {
+function createJWT({userId, email}) {
   let token;
   try{
   token = jwt.sign(

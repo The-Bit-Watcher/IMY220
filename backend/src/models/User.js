@@ -15,7 +15,7 @@ const UserSchema = new mongoose.Schema({
         required: true,
         unique: true
     },
-    password: {
+    hashedPassword: {
         type: String,
         required: true
     },
@@ -36,14 +36,20 @@ const UserSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     },
-    friends: [{
+    friends: {
+    type: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: "User"
     }],
-    favouriteIds: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User"
-    }]
+    default: []
+    },
+    favouriteIds: {
+        type: [{
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User"
+        }],
+        default: []
+    }
 });
 
 module.exports = mongoose.model(

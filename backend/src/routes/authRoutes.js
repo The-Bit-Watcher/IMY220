@@ -1,30 +1,38 @@
-import createJWT from '../controllers/authController'
+const { createJWT } = require("../controllers/authController");
+const User = require("../models/User");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const { redisClient } = require("../config/redis");
 
-const redis = require('redis');
-const redisClient = redis.createClient();
 
 
-//need to create db and add db logic + password encryption using bcrypt
-// Sign-in endpoint returning dummy data
 app.post("/login", async(req, res, next) => {
   let {email, password} = req.body;
 
   let existingUser;
   try{
-    //search in mongodb
-    
+    //search in mongodb by email
+    existingUser = await User.findOne({email: email});
   }catch{
     const error = new Error('Error! Something went wrong.');
     return next(error);
   }
 
-  if (!existingUser || existingUser.password !== password)
+  if (!existingUser)
   {
-    const error = new Error('Wrong details');
+    const error = new Error('Incorrect details');
     return next(error);
   }
 
-  const token = createJWT({existingUser.userId, existingUser.email});
+  let passwordMatches = await bcrypt.compare(password, existingUser.hashedPassword);
+
+  if (!passwordMatches){
+    return res.status(401).json({
+        message: "Invalid credentials"
+    });
+  }
+
+  const token = createJWT({userId: existingUser._id, email: existingUser.email});
 
   res.status(200)
     .json({
@@ -39,15 +47,24 @@ app.post("/login", async(req, res, next) => {
 
 // Sign-up endpoint returning dummy data
 app.post('/signup', async(req, res, next) => {
-  const {name, email, password} = req.body;
+  const {username, email, password} = req.body;
+  let existingUser;
   try {
-    //await add user to db 
+    //await add user to db
+    let hashedPassword = await bcrypt.hash(password, process.env.SALT_ROUNDS);
+    existingUser = await User.create({username: username, email: email, hashedPassword: hashedPassword });
   }catch{
     const error = new Error('Error! Something went wrong.');
     next(error);
   }
 
-  let token = createJWT({userId, email});
+  if (!existingUser){
+    return res.status(500).json({
+        message: 'Something went wrong.'
+    });
+  }
+
+  let token = createJWT({userId: existingUser._id, email: existingUser.email});
   res.status(200)
     .json({
       success: true,
