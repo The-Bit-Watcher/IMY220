@@ -17,7 +17,7 @@ const CommentSchema = mongoose.Schema({
     },
     createdAt: {
         type: Date,
-        default: Date.now() //think only time where this should not be default is if we use a type of buffer or system goes down and .now differs from original
+        default: Date.now //think only time where this should not be default is if we use a type of buffer or system goes down and .now differs from original
     }
 });
 

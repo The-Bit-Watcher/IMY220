@@ -21,7 +21,7 @@ async function seedDatabase() {
     console.log("Existing data cleared");
 
     // 3. Create users
-    const passwordHash = await bcrypt.hash("Password123!", 10);
+    const passwordHash = await bcrypt.hash("Password123!", 12);
 
     const users = await User.create([
       {

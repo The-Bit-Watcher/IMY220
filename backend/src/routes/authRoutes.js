@@ -5,7 +5,6 @@ const jwt = require("jsonwebtoken");
 const { redisClient } = require("../config/redis");
 
 
-
 app.post("/login", async(req, res, next) => {
   let {email, password} = req.body;
 

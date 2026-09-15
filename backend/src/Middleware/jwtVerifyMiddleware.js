@@ -23,3 +23,7 @@ async function checkTokenValidity(req, res, next) {
         res.status(403).send('Invalid token.');
     }
 }
+
+module.exports(
+    checkTokenValidity
+);
