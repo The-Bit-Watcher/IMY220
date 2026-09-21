@@ -130,7 +130,7 @@ app.get('/api/get/post/:id', checkTokenValidity, async (req, res, next) => {
 
 //create post
 app.post('/api/create/posts', checkTokenValidity, async (req, res, next) => {
-    const { caption, image } = req.body;
+    const { caption, image, hashtages } = req.body;
 
     try {
         // Basic validation
@@ -141,11 +141,14 @@ app.post('/api/create/posts', checkTokenValidity, async (req, res, next) => {
             });
         }
 
+        const formattedHashtags = Post.formattedHashtags(hashtages);
+
         // Pull userId directly from JWT middleware for security
         const post = await Post.create({
             userId: req.user.userId,
             caption: caption,
             image: image,
+            hashtags: formattedHashtags,
             likes: 0
         });
 
@@ -161,7 +164,7 @@ app.post('/api/create/posts', checkTokenValidity, async (req, res, next) => {
 //update post, might have a different one for the likes.
 app.put('/api/update/post/:id', checkTokenValidity, async (req, res, next) => {
     const postId = req.params.id;
-    const { caption, image } = req.body;
+    const { caption, image, hashtags } = req.body;
 
     try {
         if (!mongoose.Types.ObjectId.isValid(postId)) {
@@ -192,6 +195,9 @@ app.put('/api/update/post/:id', checkTokenValidity, async (req, res, next) => {
         // Apply updates if values are provided
         if (caption !== undefined) existingPost.caption = caption;
         if (image !== undefined) existingPost.image = image;
+        if (hashtags !== undefined){
+            existingPost.hashtags = Post.formattedHashtags(hashtags);
+        }
 
         // Save updated document
         const updatedPost = await existingPost.save();
