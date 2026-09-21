@@ -1,31 +1,37 @@
 const mongoose = require("mongoose");
 
-const PostSchema = mongoose.Schema({
-    userId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        required: true
+const PostSchema = new mongoose.Schema(
+    {
+        userId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+            index: true // Indexed for fast queries on user profile / local feed
+        },
+        caption: {
+            type: String,
+            required: true,
+            trim: true
+        },
+        image: {
+            type: String,
+            required: true
+        },
+        likes: {
+            type: Number,
+            default: 0
+        },
+        // Array of Album IDs this post belongs to
+        albums: [
+            {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "Album"
+            }
+        ]
     },
-    caption: {
-        type: String,
-        required: true
-    },
-    image: {
-        type: String,
-        required: true,
-    },
-    createdAt: {
-        type: Date,
-        default: Date.now
-    },
-    likes: {
-        type: Number,
-        default: 0
+    { 
+        timestamps: true // Automatically manages createdAt and updatedAt fields
     }
-});
-//add albums here. Make it easier later. to get the album it is in ? Maybe or filter ??
+);
 
-module.exports = mongoose.model(
-    "Post",
-    PostSchema
-)
+module.exports = mongoose.model("Post", PostSchema);

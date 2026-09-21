@@ -21,7 +21,7 @@ app.get('/api/get/posts/me', checkTokenValidity, async (req, res) => {
         }
 
         //so user exist, find posts or return []
-        const posts = await Post.findById({userId: existingUser._id});
+        const posts = await Post.find({ userId: existingUser._id }).sort({ createdAt: -1 });
         //might have to change structure need to add in which albums they are in
         //your posts. Used in profile page
         //using a tab will call this when on that tab page
@@ -73,6 +73,8 @@ app.get('/api/get/local', checkTokenValidity, async (req, res, next) => {
         //have the required friends+fav
         const friendsList = existingUser.friends || [];
         const favoritesList = existingUser.favouriteIds || [];
+
+        const allRelevantUserIds = [...new Set([...friendsList, ...favoritesList])];
 
         const posts = await Post.find({
             userId: { $in: allRelevantUserIds }
@@ -203,3 +205,54 @@ app.put('/api/update/post/:id', checkTokenValidity, async (req, res, next) => {
     }
 });
 
+app.delete('/api/delete/post/:id', checkTokenValidity, async (req, res, next) => {
+    const postId = req.params.id;
+
+    try {
+        // 1. Validate ID format
+        if (!mongoose.Types.ObjectId.isValid(postId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Post ID format."
+            });
+        }
+
+        // 2. Find post
+        const post = await Post.findById(postId);
+
+        if (!post) {
+            return res.status(404).json({
+                success: false,
+                message: "Post not found."
+            });
+        }
+
+        // 3. Authorization check: Ensure only owner can delete
+        if (post.userId.toString() !== req.user.userId) {
+            return res.status(403).json({
+                success: false,
+                message: "Unauthorized: You can only delete your own posts."
+            });
+        }
+
+        // 4. Delete the post from MongoDB
+        await Post.findByIdAndDelete(postId);
+
+        // 5. Cleanup related documents (Cascade Delete)
+        // Delete all comments linked to this post
+        await Comment.deleteMany({ postId: postId });
+
+        // Remove post reference from any Albums containing it
+        await Album.updateMany(
+            { posts: postId },
+            { $pull: { posts: postId } }
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: "Post and associated comments deleted successfully."
+        });
+    } catch (error) {
+        next(error);
+    }
+});
