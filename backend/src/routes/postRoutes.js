@@ -127,13 +127,79 @@ app.get('/api/get/post/:id', checkTokenValidity, async (req, res, next) => {
 });
 
 //create post
-app.post('/api/create/posts', async (req, res, next) => {
-    //contains all the items required to make a post.
-    //  Look at post in models to see example
-    //posts not unique, so not friction there
-    const post = req.body;
-    
-    try{
-        
+app.post('/api/create/posts', checkTokenValidity, async (req, res, next) => {
+    const { caption, image } = req.body;
+
+    try {
+        // Basic validation
+        if (!caption || !image) {
+            return res.status(400).json({
+                success: false,
+                message: "Caption and image are required."
+            });
+        }
+
+        // Pull userId directly from JWT middleware for security
+        const post = await Post.create({
+            userId: req.user.userId,
+            caption: caption,
+            image: image,
+            likes: 0
+        });
+
+        return res.status(201).json({
+            success: true,
+            post: post
+        });
+    } catch (error) {
+        next(error);
     }
 });
+
+//update post, might have a different one for the likes.
+app.put('/api/update/post/:id', checkTokenValidity, async (req, res, next) => {
+    const postId = req.params.id;
+    const { caption, image } = req.body;
+
+    try {
+        if (!mongoose.Types.ObjectId.isValid(postId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Post ID format."
+            });
+        }
+
+        // Find the post by ID
+        const existingPost = await Post.findById(postId);
+
+        if (!existingPost) {
+            return res.status(404).json({
+                success: false,
+                message: "Post not found."
+            });
+        }
+
+        // Authorization check: Ensure only the creator can update the post
+        if (existingPost.userId.toString() !== req.user.userId) {
+            return res.status(403).json({
+                success: false,
+                message: "Unauthorized: You can only update your own posts."
+            });
+        }
+
+        // Apply updates if values are provided
+        if (caption !== undefined) existingPost.caption = caption;
+        if (image !== undefined) existingPost.image = image;
+
+        // Save updated document
+        const updatedPost = await existingPost.save();
+
+        return res.status(200).json({
+            success: true,
+            post: updatedPost
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
