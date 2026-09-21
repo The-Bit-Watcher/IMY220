@@ -23,6 +23,7 @@ const PostSchema = mongoose.Schema({
         default: 0
     }
 });
+//add albums here. Make it easier later. to get the album it is in ? Maybe or filter ??
 
 module.exports = mongoose.model(
     "Post",
