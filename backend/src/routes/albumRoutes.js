@@ -3,6 +3,7 @@ const checkTokenValidity = require("../Middleware/jwtVerifyMiddleware");
 const Comment = require("../models/Comment");
 const Album = require("../models/Albums");
 const Post = require("../models/Post");
+const {} = require("../controllers/albumController");
 const { default: mongoose } = require("mongoose");
 
 //get all albums
@@ -139,13 +140,196 @@ app.delete('/api/delete/album/:id', checkTokenValidity, async(req, res, next) =>
 
 
 //create an album
+//hashtags auto updated based on images in it. 
+app.post('/api/create/album', checkTokenValidity, async(req, res, next) => {
+    //get the name, userId we get from jwt, and post are empty of of now
+    //maybe later add a create for when you want to add to a album you can create and add
+    //but will be done later if I have the neccessary time
+    const {title} = req.body;
 
+    try{
+        // Basic validation
+        if (!title) {
+            return res.status(400).json({
+                success: false,
+                message: "Title are required."
+            });
+        }
 
-//edit album
+        // Pull userId directly from JWT middleware for security
+        const album = await Album.create({
+            title: title,
+            userId: req.user.userId,
+            hashtags: [],
+            postId: []
+        });
 
+        res.status(200).json({
+            success: true,
+            album: album
+        })
+    }catch(error){
+        next(error);
+    }
+});
+
+//edit album title. Hashtags will be auto changed based on posts in the album.
+app.put('/api/update/album/:id', checkTokenValidity, async (req, res, next) => {
+    const {title} = req.body;
+    const albumId = req.params.id;
+    const userId = req.user.userId;
+
+    try{
+        if (!mongoose.Types.ObjectId.isValid(albumId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Album ID format."
+            });
+        }
+
+        if (!title){
+            res.status(400).json({
+                success: false,
+                message: 'Bad request'
+            })
+        }
+
+        //find album
+        const album = await Album.findById(albumId);
+
+        if (!album){
+            res.status(404).json({
+                success: false,
+                message: "Album does not exist"
+            });
+        }
+
+        //owner trying to edit is not owner
+        if (album.userId.toString() !== userId){
+            res.status(400).json({
+                success: false,
+                message: "You do not have the neccessary permission"
+            });
+        }
+
+        album.title = title;
+
+        const updatedAlbum = album.save();
+
+        res.status(200).json({
+            success: 200,
+            album: updatedAlbum
+        })
+    }catch(error){
+        next(error);
+    }
+});
 
 //add to an album
+app.post('/api/add/post', checkTokenValidity, async (req, res, next) => {
+    const {postId, albumId} = req.body;
+    const userId = req.user.userId;
 
+    try{
+        if (!mongoose.Types.ObjectId.isValid(postId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Post ID."
+            });
+        }
+        const post = Post.findById(postId);
+
+        if (!post){
+            res.status(404).json({
+                success: false,
+                message: 'Post does not exist'
+            });
+        }
+
+        const existingAlbum = await Album.findById(albumId);
+
+        if (!existingAlbum){
+             res.status(404).json({
+                success: false,
+                message: 'Album does not exist'
+            });
+        }
+
+        if (existingAlbum.userId.toString() !== userId){
+            res.status(400).json({
+                success: false,
+                message: "You do not have the neccessary permission"
+            });
+        }
+
+        // Prevent duplicate post entries in array
+        if (!existingAlbum.posts.some(id => id.equals(post._id))) {
+            existingAlbum.posts.push(post._id);
+        }
+
+        // Recalculate unique hashtags for the album
+        await syncAlbumHashtags(existingAlbum);
+        await existingAlbum.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Post added successfully',
+            album: existingAlbum
+        })
+    }catch(error){
+        next(error);
+    }
+});
 
 //remove from an album
+app.post('/api/remove/album/:id', checkTokenValidity, async (req, res, next) => {
+    const {postId, albumId} = req.body;
+    const userId = req.user.userId;
 
+    try{
+        if (!mongoose.Types.ObjectId.isValid(postId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Post ID."
+            });
+        }
+        const post = Post.findById(postId);
+
+        if (!post){
+            res.status(404).json({
+                success: false,
+                message: 'Post does not exist'
+            });
+        }
+
+        const existingAlbum = await Album.findById(albumId);
+
+        if (!existingAlbum){
+             res.status(404).json({
+                success: false,
+                message: 'Album does not exist'
+            });
+        }
+
+        if (existingAlbum.userId.toString() !== userId){
+            res.status(400).json({
+                success: false,
+                message: "You do not have the neccessary permission"
+            });
+        }
+
+        existingAlbum.posts = existingAlbum.posts.filter(id => id.toString() !== postId);
+
+        // Recalculate unique hashtags for remaining posts
+        await syncAlbumHashtags(existingAlbum);
+        await existingAlbum.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Post added successfully',
+            album: existingAlbum
+        })
+    }catch(error){
+        next(error);
+    }
+});
