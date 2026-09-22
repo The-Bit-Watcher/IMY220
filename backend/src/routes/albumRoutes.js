@@ -3,7 +3,7 @@ const checkTokenValidity = require("../Middleware/jwtVerifyMiddleware");
 const Comment = require("../models/Comment");
 const Album = require("../models/Albums");
 const Post = require("../models/Post");
-const {} = require("../controllers/albumController");
+const {updateHashtagsForAlbum, syncAlbumHashtags} = require("../controllers/albumController");
 const { default: mongoose } = require("mongoose");
 
 //get all albums
@@ -145,20 +145,21 @@ app.post('/api/create/album', checkTokenValidity, async(req, res, next) => {
     //get the name, userId we get from jwt, and post are empty of of now
     //maybe later add a create for when you want to add to a album you can create and add
     //but will be done later if I have the neccessary time
-    const {title} = req.body;
+    const {title, description} = req.body;
 
     try{
         // Basic validation
-        if (!title) {
+        if (!title || !description) {
             return res.status(400).json({
                 success: false,
-                message: "Title are required."
+                message: "Bad request"
             });
         }
 
         // Pull userId directly from JWT middleware for security
         const album = await Album.create({
             title: title,
+            description: description,
             userId: req.user.userId,
             hashtags: [],
             postId: []
@@ -175,7 +176,7 @@ app.post('/api/create/album', checkTokenValidity, async(req, res, next) => {
 
 //edit album title. Hashtags will be auto changed based on posts in the album.
 app.put('/api/update/album/:id', checkTokenValidity, async (req, res, next) => {
-    const {title} = req.body;
+    const {title, description, hashtags} = req.body;
     const albumId = req.params.id;
     const userId = req.user.userId;
 
@@ -212,7 +213,11 @@ app.put('/api/update/album/:id', checkTokenValidity, async (req, res, next) => {
             });
         }
 
-        album.title = title;
+        if (title !== undefined) album.title = title;
+        if (description !== undefined) album.description = description;
+        if (hashtags !== undefined){
+            album.hashtags = Post.formattedHashtags(hashtags);
+        }
 
         const updatedAlbum = album.save();
 
