@@ -49,7 +49,10 @@ const UserSchema = new mongoose.Schema({
             ref: "User"
         }],
         default: []
-    }
+    },
+    sentRequests: [{ 
+            type: mongoose.Schema.Types.ObjectId, ref: "User" 
+        }]
 });
 
 module.exports = mongoose.model(

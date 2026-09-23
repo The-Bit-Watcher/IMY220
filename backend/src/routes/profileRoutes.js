@@ -132,3 +132,213 @@ app.put('/api/profile/me', checkTokenValidity, async (req, res, next) => {
         next(error);
     }
 });
+
+//view profiles
+app.get('/api/users/:id', checkTokenValidity, async (req, res, next) => {
+    const targetUserId = req.params.id;
+    const currentUserId = req.user.userId;
+
+    try {
+        if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid User ID format."
+            });
+        }
+
+        const user = await User.findById(targetUserId)
+            .select("-password") // Exclude sensitive details
+            .populate("friends", "username profilePicture");
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found."
+            });
+        }
+
+        // Determine friendship status relative to requesting user
+        let relationshipStatus = "none";
+        if (targetUserId === currentUserId) {
+            relationshipStatus = "self";
+        } else if (user.friends.some(f => f._id.toString() === currentUserId)) {
+            relationshipStatus = "friends";
+        } else if (user.friendRequests.some(id => id.toString() === currentUserId)) {
+            relationshipStatus = "request_sent";
+        } else if (user.sentRequests.some(id => id.toString() === currentUserId)) {
+            relationshipStatus = "request_received";
+        }
+
+        return res.status(200).json({
+            success: true,
+            user: user,
+            relationshipStatus: relationshipStatus
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+//send friend request
+app.post('/api/friends/request/:id', checkTokenValidity, async (req, res, next) => {
+    const recipientId = req.params.id;
+    const senderId = req.user.userId;
+
+    try {
+        if (!mongoose.Types.ObjectId.isValid(recipientId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid User ID format."
+            });
+        }
+
+        if (senderId === recipientId) {
+            return res.status(400).json({
+                success: false,
+                message: "You cannot send a friend request to yourself."
+            });
+        }
+
+        const recipient = await User.findById(recipientId);
+        const sender = await User.findById(senderId);
+
+        if (!recipient || !sender) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found."
+            });
+        }
+
+        // Check if already friends or request already pending
+        if (sender.friends.includes(recipientId)) {
+            return res.status(400).json({
+                success: false,
+                message: "You are already friends with this user."
+            });
+        }
+
+        if (recipient.friendRequests.includes(senderId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Friend request already sent."
+            });
+        }
+
+        // Update recipient's incoming requests and sender's sent requests
+        await User.findByIdAndUpdate(recipientId, { $addToSet: { friendRequests: senderId } });
+        await User.findByIdAndUpdate(senderId, { $addToSet: { sentRequests: recipientId } });
+
+        return res.status(200).json({
+            success: true,
+            message: "Friend request sent successfully."
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+//accept friend request
+app.post('/api/friends/accept/:id', checkTokenValidity, async (req, res, next) => {
+    const senderId = req.params.id; // User who sent the request
+    const currentUserId = req.user.userId; // Current logged-in user
+
+    try {
+        if (!mongoose.Types.ObjectId.isValid(senderId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid User ID format."
+            });
+        }
+
+        const currentUser = await User.findById(currentUserId);
+
+        // Verify request exists
+        if (!currentUser.friendRequests.includes(senderId)) {
+            return res.status(400).json({
+                success: false,
+                message: "No pending friend request from this user."
+            });
+        }
+
+        // 1. Add each other to friends array
+        // 2. Remove pending IDs from friendRequests / sentRequests
+        await User.findByIdAndUpdate(currentUserId, {
+            $addToSet: { friends: senderId },
+            $pull: { friendRequests: senderId }
+        });
+
+        await User.findByIdAndUpdate(senderId, {
+            $addToSet: { friends: currentUserId },
+            $pull: { sentRequests: currentUserId }
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Friend request accepted."
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+//reject+cancel friend request
+app.post('/api/friends/reject/:id', checkTokenValidity, async (req, res, next) => {
+    const targetUserId = req.params.id;
+    const currentUserId = req.user.userId;
+
+    try {
+        if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid User ID format."
+            });
+        }
+
+        // Remove from pending lists for both directions (handles reject or cancel)
+        await User.findByIdAndUpdate(currentUserId, {
+            $pull: { friendRequests: targetUserId, sentRequests: targetUserId }
+        });
+
+        await User.findByIdAndUpdate(targetUserId, {
+            $pull: { friendRequests: currentUserId, sentRequests: currentUserId }
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Friend request cancelled/rejected."
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+//unfriend a user
+app.delete('/api/friends/unfriend/:id', checkTokenValidity, async (req, res, next) => {
+    const friendId = req.params.id;
+    const currentUserId = req.user.userId;
+
+    try {
+        if (!mongoose.Types.ObjectId.isValid(friendId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid User ID format."
+            });
+        }
+
+        // Remove each other from friends array
+        await User.findByIdAndUpdate(currentUserId, {
+            $pull: { friends: friendId }
+        });
+
+        await User.findByIdAndUpdate(friendId, {
+            $pull: { friends: currentUserId }
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Unfriended successfully."
+        });
+    } catch (error) {
+        next(error);
+    }
+});
