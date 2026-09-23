@@ -4,6 +4,7 @@
 const User = require("../models/User");
 const checkTokenValidity = require("../Middleware/jwtVerifyMiddleware");
 const Comment = require("../models/Comment");
+const Report = require("../models/Report");
 const Album = require("../models/Albums");
 const Post = require("../models/Post");
 const { default: mongoose } = require("mongoose");
@@ -119,9 +120,13 @@ app.get('/api/get/post/:id', checkTokenValidity, async (req, res, next) => {
             });
         }
 
+        //get comments
+        const comments = await Post.find({postId: post._id})
+
         return res.status(200).json({
             success: true,
-            post: post
+            post: post,
+            commments: comments
         });
         }catch(error){
             next(error);
@@ -257,6 +262,167 @@ app.delete('/api/delete/post/:id', checkTokenValidity, async (req, res, next) =>
         return res.status(200).json({
             success: true,
             message: "Post and associated comments deleted successfully."
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+//add comments
+app.post('/api/posts/:id/comments', checkTokenValidity, async (req, res, next) => {
+    const postId = req.params.id;
+    const { text } = req.body;
+
+    try {
+        if (!mongoose.Types.ObjectId.isValid(postId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Post ID format."
+            });
+        }
+
+        if (!text || text.trim() === "") {
+            return res.status(400).json({
+                success: false,
+                message: "Comment text cannot be empty."
+            });
+        }
+
+        const postExists = await Post.exists({ _id: postId });
+        if (!postExists) {
+            return res.status(404).json({
+                success: false,
+                message: "Post not found."
+            });
+        }
+
+        const comment = await Comment.create({
+            postId: postId,
+            userId: req.user.userId,
+            text: text
+        });
+
+        return res.status(201).json({
+            success: true,
+            comment: comment
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+//get comments
+app.get('/api/posts/:id/comments', checkTokenValidity, async (req, res, next) => {
+    const postId = req.params.id;
+
+    try {
+        if (!mongoose.Types.ObjectId.isValid(postId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Post ID format."
+            });
+        }
+
+        const comments = await Comment.find({ postId: postId })
+            .populate("userId", "username profilePicture") // Optional: populate user info
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            success: true,
+            comments: comments
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+//delete a comment
+app.delete('/api/comments/:id', checkTokenValidity, async (req, res, next) => {
+    const commentId = req.params.id;
+    const userId = req.user.userId;
+
+    try {
+        if (!mongoose.Types.ObjectId.isValid(commentId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Comment ID format."
+            });
+        }
+
+        const comment = await Comment.findById(commentId);
+        if (!comment) {
+            return res.status(404).json({
+                success: false,
+                message: "Comment not found."
+            });
+        }
+
+        const post = await Post.findById(comment.postId);
+
+        // Allow deletion if requester is the comment author OR post owner
+        const isCommentAuthor = comment.userId.toString() === userId;
+        const isPostOwner = post && post.userId.toString() === userId;
+
+        if (!isCommentAuthor && !isPostOwner) {
+            return res.status(403).json({
+                success: false,
+                message: "Unauthorized: You cannot delete this comment."
+            });
+        }
+
+        await Comment.findByIdAndDelete(commentId);
+
+        return res.status(200).json({
+            success: true,
+            message: "Comment deleted successfully."
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+//report a post
+app.post('/api/posts/:id/report', checkTokenValidity, async (req, res, next) => {
+    const postId = req.params.id;
+    const { reason, additionalDetails } = req.body;
+    const userId = req.user.userId;
+
+    try {
+        if (!mongoose.Types.ObjectId.isValid(postId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Post ID format."
+            });
+        }
+
+        const postExists = await Post.exists({ _id: postId });
+        if (!postExists) {
+            return res.status(404).json({
+                success: false,
+                message: "Post not found."
+            });
+        }
+
+        // Check for existing report from same user
+        const existingReport = await Report.findOne({ postId: postId, reportedBy: userId });
+        if (existingReport) {
+            return res.status(400).json({
+                success: false,
+                message: "You have already reported this post."
+            });
+        }
+
+        const report = await Report.create({
+            postId: postId,
+            reportedBy: userId,
+            reason: reason || "Other",
+            additionalDetails: additionalDetails || ""
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "Post reported successfully. Our team will review it.",
+            report: report
         });
     } catch (error) {
         next(error);
