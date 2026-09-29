@@ -140,38 +140,38 @@ app.get('/api/users/:id', checkTokenValidity, async (req, res, next) => {
 
     try {
         if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid User ID format."
-            });
+            return res.status(400).json({ success: false, message: "Invalid User ID format." });
         }
 
-        const user = await User.findById(targetUserId)
-            .select("-password") // Exclude sensitive details
-            .populate("friends", "username profilePicture");
+        const user = await User.findById(targetUserId).select("-password");
 
         if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found."
-            });
+            return res.status(404).json({ success: false, message: "User not found." });
         }
 
-        // Determine friendship status relative to requesting user
+        // Check relationship status
+        const isSelf = targetUserId === currentUserId;
+        const isFriend = user.friends.some(id => id.toString() === currentUserId);
+
         let relationshipStatus = "none";
-        if (targetUserId === currentUserId) {
-            relationshipStatus = "self";
-        } else if (user.friends.some(f => f._id.toString() === currentUserId)) {
-            relationshipStatus = "friends";
-        } else if (user.friendRequests.some(id => id.toString() === currentUserId)) {
-            relationshipStatus = "request_sent";
-        } else if (user.sentRequests.some(id => id.toString() === currentUserId)) {
-            relationshipStatus = "request_received";
+        if (isSelf) relationshipStatus = "self";
+        else if (isFriend) relationshipStatus = "friends";
+        else if (user.friendRequests.some(id => id.toString() === currentUserId)) relationshipStatus = "request_sent";
+        else if (user.sentRequests.some(id => id.toString() === currentUserId)) relationshipStatus = "request_received";
+
+        // Convert user to plain JS object to modify output
+        const userResponse = user.toObject();
+
+        // Populate friends ONLY if user is self or established friends
+        if (isSelf || isFriend) {
+            await User.populate(userResponse, { path: "friends", select: "username profilePicture" });
+        } else {
+            delete userResponse.friends; // Omit friends list completely for non-friends
         }
 
         return res.status(200).json({
             success: true,
-            user: user,
+            user: userResponse,
             relationshipStatus: relationshipStatus
         });
     } catch (error) {

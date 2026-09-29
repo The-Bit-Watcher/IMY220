@@ -40,62 +40,98 @@ app.get('/api/get/posts/me', checkTokenValidity, async (req, res) => {
 });
 
 //global feed
-app.get('/api/get/global', checkTokenValidity, async (req, res) => {
-    try{
-        //get all from posts. 
-        const posts = await Post.find();
-        res.status(200).json({
-            success: true,
-            posts: posts || []
-        })
-    }catch{
-        res.status(500).json({
-            success: false,
-            posts: []
-        });
+app.get('/api/get/global', checkTokenValidity, async (req, res, next) => {
+    try {
+        const { sortBy, tag } = req.query;
+        let filter = {};
+
+        // Filter out hidden/reported posts (reported > 2 times)
+        // Fetch posts that have <= 2 reports
+        const heavilyReportedPosts = await Report.aggregate([
+            { $group: { _id: "$postId", count: { $sum: 1 } } },
+            { $match: { count: {$gt: 2 } } }
+        ]);
+        const hiddenPostIds = heavilyReportedPosts.map(r => r._id);
+        filter._id = { $nin: hiddenPostIds };
+
+        // Filter by Hashtag if requested
+        if (tag) {
+            filter.hashtags = tag.startsWith('#') ? tag : `#${tag}`;
+        }
+
+        let postsQuery = Post.find(filter);
+
+        // Dynamic Sorting
+        if (sortBy === 'popular' || sortBy === 'comments') {
+            // Aggregate comment counts for sorting
+            const posts = await Post.aggregate([
+                { $match: filter },
+                {
+                    $lookup: {
+                        from: 'comments',
+                        localField: '_id',
+                        foreignField: 'postId',
+                        as: 'commentList'
+                    }
+                },
+                {
+                    $addFields: { commentCount: { $size: '$commentList' } }
+                },
+                { $sort: { commentCount: -1, createdAt: -1 } }
+            ]);
+            return res.status(200).json({ success: true, posts });
+        } else {
+            const posts = await postsQuery.sort({ createdAt: -1 });
+            return res.status(200).json({ success: true, posts });
+        }
+    } catch (error) {
+        next(error);
     }
 });
 
-//local feed. Friends, with fav at the top
-//get all frineds post and then filter for favourites at the top,
-//or on collection add it to the front if he is a fav.
+// Local Feed (Friends + Favorites with Sorting)
 app.get('/api/get/local', checkTokenValidity, async (req, res, next) => {
-    try{
-        //we have a friends and favourteids
+    try {
+        const { sortBy, tag } = req.query;
         const existingUser = await User.findById(req.user.userId);
 
-        //no user then no posts. 
-        if (!existingUser){
-            return res.status(404).json({
-                message: "User not found!"
-            });
+        if (!existingUser) {
+            return res.status(404).json({ message: "User not found!" });
         }
 
-        //have the required friends+fav
         const friendsList = existingUser.friends || [];
         const favoritesList = existingUser.favouriteIds || [];
-
         const allRelevantUserIds = [...new Set([...friendsList, ...favoritesList])];
 
-        const posts = await Post.find({
-            userId: { $in: allRelevantUserIds }
-        }).sort({ createdAt: -1 });
+        // Exclude posts reported > 2 times
+        const heavilyReportedPosts = await Report.aggregate([
+            { $group: { _id: "$postId", count: { $sum: 1 } } },
+            { $match: { count: {$gt: 2 } } }
+        ]);
+        const hiddenPostIds = heavilyReportedPosts.map(r => r._id);
 
-        // Sort results: Favorite users' posts first, then standard friends' posts
-        const sortedPosts = posts.sort((a, b) => {
+        let filter = {
+            userId: { $in: allRelevantUserIds },
+            _id: { $nin: hiddenPostIds }
+        };
+
+        if (tag) {
+            filter.hashtags = tag.startsWith('#') ? tag : `#${tag}`;
+        }
+
+        let posts = await Post.find(filter).sort({ createdAt: -1 });
+
+        // Prioritize Favorite Users first
+        posts = posts.sort((a, b) => {
             const aIsFav = favoritesList.some(id => id.equals(a.userId));
             const bIsFav = favoritesList.some(id => id.equals(b.userId));
-
             if (aIsFav && !bIsFav) return -1;
             if (!aIsFav && bIsFav) return 1;
-            return 0; // retain chronological sorting from query
+            return 0;
         });
 
-        return res.status(200).json({
-            success: true,
-            posts: sortedPosts
-        });
-    }catch(error){
+        return res.status(200).json({ success: true, posts });
+    } catch (error) {
         next(error);
     }
 });
@@ -216,52 +252,48 @@ app.put('/api/update/post/:id', checkTokenValidity, async (req, res, next) => {
     }
 });
 
-app.delete('/api/delete/post/:id', checkTokenValidity, async (req, res, next) => {
+aapp.delete('/api/delete/post/:id', checkTokenValidity, async (req, res, next) => {
     const postId = req.params.id;
 
     try {
-        // 1. Validate ID format
         if (!mongoose.Types.ObjectId.isValid(postId)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid Post ID format."
-            });
+            return res.status(400).json({ success: false, message: "Invalid Post ID format." });
         }
 
-        // 2. Find post
         const post = await Post.findById(postId);
-
         if (!post) {
-            return res.status(404).json({
-                success: false,
-                message: "Post not found."
-            });
+            return res.status(404).json({ success: false, message: "Post not found." });
         }
 
-        // 3. Authorization check: Ensure only owner can delete
         if (post.userId.toString() !== req.user.userId) {
-            return res.status(403).json({
-                success: false,
-                message: "Unauthorized: You can only delete your own posts."
-            });
+            return res.status(403).json({ success: false, message: "Unauthorized: You can only delete your own posts." });
         }
 
-        // 4. Delete the post from MongoDB
+        // Delete the post
         await Post.findByIdAndDelete(postId);
 
-        // 5. Cleanup related documents (Cascade Delete)
-        // Delete all comments linked to this post
-        await Comment.deleteMany({ postId: postId });
+        //Delete linked comments and reports
+        await Comment.deleteMany({ postId });
+        await Report.deleteMany({ postId });
 
-        // Remove post reference from any Albums containing it
-        await Album.updateMany(
-            { posts: postId },
-            { $pull: { posts: postId } }
-        );
+        // Find albums containing this post
+        const parentAlbums = await Album.find({ posts: postId });
+
+        for (let album of parentAlbums) {
+            // Remove post ID from album
+            album.posts = album.posts.filter(pId => pId.toString() !== postId);
+
+            //If album is now empty, delete the album
+            if (album.posts.length === 0) {
+                await Album.findByIdAndDelete(album._id);
+            } else {
+                await album.save();
+            }
+        }
 
         return res.status(200).json({
             success: true,
-            message: "Post and associated comments deleted successfully."
+            message: "Post deleted and parent albums cleaned up successfully."
         });
     } catch (error) {
         next(error);
