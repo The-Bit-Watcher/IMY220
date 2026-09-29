@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
-import { users } from '../data/mockProfiles';
 import Header from '../components/common/Header/Header';
 import SearchBar from '../components/home/SearchInput';
 import LocalFeed from '../components/home/LocalFeed';
@@ -11,13 +10,15 @@ function HomePage({ currentUserId = 1 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('local');
 
-  const currentUser = users.find(u => u.id === currentUserId) || users[0];
-  const friendIds = currentUser.friendIds || [];
+  const [sortBy, setSortBy] = useState("newest"); //newest || comments
+  const [hashtagFilter, setHashtagFilter] = useState("");
+  const [timeframe, setTimeframe] = useState("all");//all || week || month
 
-  const recommendedUsers = users.filter(
-    user => user.id !== currentUserId && !friendIds.includes(user.id)
-  );
+  const filterOptions = {
+    sortBy, hashtagFilter, timeframe, searchTerm
+  };
 
+  
   return (
     <div>
       <Header currentUserId={currentUserId} />
