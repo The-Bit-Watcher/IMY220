@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 import Header from '../components/common/Header/Header';
 import SearchBar from '../components/home/SearchInput';
 import LocalFeed from '../components/home/LocalFeed';
 import GlobalFeed from '../components/home/GlobalFeed';
-import ProfilePreview from '../components/common/ProfilePreview/ProfilePreview';
 
 function HomePage({ currentUserId = 1 }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -18,58 +17,72 @@ function HomePage({ currentUserId = 1 }) {
     sortBy, hashtagFilter, timeframe, searchTerm
   };
 
-  
+
   return (
-    <div>
+    <div classname="min-h-screen bg-slate-950 text-slate-100 font-sans"> 
       <Header currentUserId={currentUserId} />
 
-      <main>
-        <div>
+      <main classname="max-w-5xl mx-auto px-4 py-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="md:col-span-2 space-y-4">
           <SearchBar searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
-        </div>
 
-        <div>
           <div>
-            <div>
-              <button
-                onClick={() => setActiveTab('local')}>
-                Friends & Favorites
-              </button>
-              <button
-                onClick={() => setActiveTab('global')}>
-                Global Feed
-              </button>
+            {/* {feeds} */}
+            <div className="flex border-b border-slate-800 pb-2 gap-2">            
+                <button
+                  onClick={() => setActiveTab('local')}
+                  className={`px-4 py-1.5 text-sm font-semibold rounded-lg transition-all ${
+                  activeTab === "local" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
+                  }`}>
+                  Friends & Favorites
+                </button>
+                <button
+                  onClick={() => setActiveTab('global')}
+                  className={`px-4 py-1.5 text-sm font-semibold rounded-lg transition-all ${
+                  activeTab === "local" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
+                  }`}>
+                  Global Feed
+                </button>
             </div>
 
-            {activeTab === 'local' ? (
-              <LocalFeed currentUserId={currentUserId} searchTerm={searchTerm} />
-            ) : (
-              <GlobalFeed searchTerm={searchTerm} />
-            )}
+            {/* Sorting + filtering */}
+            <div classname="flex flex-wrap gap-2 text-xs">
+                    <select value={sortBy}
+                    onChange={(e) => {setSortBy(e.target.value)}}
+                    className="bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5">
+                      <option value="newest">Sort: Newest First</option>
+                      <option value="comments">Sort: Most Commented</option>
+                    </select>
+
+                    <select value={timeframe}
+                    onChange={(e) => {setTimeframe(e.target.value)}}
+                    className="bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5">
+                      <option value="all">Time: All Time</option>
+                      <option value="week">Time: Past Week</option>
+                      <option value="month">Time: Past Month</option>
+                    </select>
+
+                    <input type="text" placeholder="Filter by #tag"
+                    value={hashtagFilter} onChange={(e) => {setHashtagFilter(e.target.value)}}
+                    className="bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5"/>                 
+            </div>
           </div>
 
-          <div>
-            <div>
-              <div>
-                <h2>
-                  Recommended People
-                </h2>
-                <p >Connect with new developers</p>
-              </div>
+          {activeTab === "local" ? (
+            <LocalFeed filterOptions={filterOptions}/>
+            ) : (
+              <GlobalFeed filterOptions={filterOptions}/>
+            )        
+          }
+        </div>
 
-              <div>
-                {recommendedUsers.length === 0 ? (
-                  <p >No new recommendations right now!</p>
-                ) : (
-                  recommendedUsers.map(recommendedUser => (
-                    <ProfilePreview 
-                      key={recommendedUser.id} 
-                      user={recommendedUser}
-                    />
-                  ))
-                )}
-              </div>
-            </div>
+        <div className="hidden md:block space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+            <h3 className="font-bold text-slate-200 text-sm mb-2">Feed Insights</h3>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Viewing <strong>{activeTab === "local" ? "Friends & Favorites" : "Global"}</strong> feed sorted by{" "}
+              <strong>{sortBy}</strong>. Posts with high reports (&gt;2) are automatically hidden for safety.
+            </p>
           </div>
         </div>
       </main>
