@@ -1,47 +1,94 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { AvatarDisplay } from '../../utils/avatarGenerator';
+import React, { useEffect, useState } from 'react';
+import { users } from '../../data/mockProfiles';
 
-// friends === undefined means the backend hid the list (not friends with this user)
-function FriendsList({ friends, ownerUsername, favouriteIds = [] }) {
-  const navigate = useNavigate();
+function UserFriends({ currentUserId, targetUserId }) {
+  const [friends, setFriends] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  if (!friends) {
+  const targetUser = users.find(u => u.id === targetUserId);
+  const currentUser = users.find(u => u.id === currentUserId);
+
+  const isOwnProfile = currentUserId === targetUserId;
+  const isFriends = currentUser?.friendIds?.includes(targetUserId);
+  const canViewFriends = isOwnProfile || isFriends;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchFriends = async () => {
+      if (!canViewFriends || !targetUser) {
+        setIsLoading(false);
+        return;
+      }
+
+      await Promise.resolve();
+
+      if (isMounted) {
+        // Get all user objects that match targetUser's friendIds
+        const friendList = users.filter(u => targetUser.friendIds?.includes(u.id));
+        setFriends(friendList);
+        setIsLoading(false);
+      }
+    };
+
+    fetchFriends();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [targetUserId, targetUser, canViewFriends]);
+
+  if (!canViewFriends) {
     return (
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 text-center text-slate-400 text-sm">
-        Friends list is hidden. You must be friends with @{ownerUsername} to view their connections.
+      <div>
+        You must be friends with this user to view their friends list.
       </div>
     );
   }
 
-  if (friends.length === 0) {
-    return <div className="text-slate-500 text-center py-6 text-sm">No friends added yet.</div>;
+  if (isLoading) {
+    return (
+      <div>
+        <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
   }
 
-  const favSet = new Set(favouriteIds.map(String));
-
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      {friends.map((friend) => (
-        <button
-          key={friend._id}
-          type="button"
-          onClick={() => navigate(`/profile/${friend._id}`)}
-          className="text-left bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl p-3 flex items-center gap-3 transition-colors"
-        >
-          <AvatarDisplay username={friend.name || friend.username} src={friend.profileImage} className="w-10 h-10 shrink-0" />
-          <div className="min-w-0 flex-1">
-            <h5 className="font-semibold text-slate-200 text-xs truncate">{friend.name}</h5>
-            <p className="text-slate-400 text-xs truncate">@{friend.username}</p>
-            {friend.location && <p className="text-slate-500 text-[10px] truncate">{friend.location}</p>}
+    <div >
+      <div>
+        <h5>Friends</h5>
+        <span>
+          {friends.length}
+        </span>
+      </div>
+
+      <div className="p-4">
+        {friends.length === 0 ? (
+          <p>No friends to show.</p>
+        ) : (
+          <div>
+            {friends.map(friend => (
+              <div key={friend.id}>
+                <img 
+                  src={friend.profileImage || 'https://via.placeholder.com/40'} 
+                  alt={friend.name} 
+                />
+                <div>
+                  <div>
+                    {friend.name}
+                  </div>
+                  <div>
+                    @{friend.username}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-          {favSet.has(String(friend._id)) && (
-            <span className="text-amber-400 text-xs" title="Favourite">★</span>
-          )}
-        </button>
-      ))}
+        )}
+      </div>
     </div>
   );
 }
 
-export default FriendsList;
+export default UserFriends;

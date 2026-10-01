@@ -58,7 +58,7 @@ router.get('/api/get/global', checkTokenValidity, async (req, res, next) => {
 
         // Filter by Hashtag if requested
         if (tag) {
-            filter.hashtags = tag.replace(/^#/, '').toLowerCase(); // stored without '#'
+            filter.hashtags = tag.startsWith('#') ? tag : `#${tag}`;
         }
 
         let postsQuery = Post.find(filter);
@@ -83,11 +83,7 @@ router.get('/api/get/global', checkTokenValidity, async (req, res, next) => {
             ]);
             return res.status(200).json({ success: true, posts });
         } else {
-            const posts = await postsQuery
-                .select("-likedBy")
-                .populate("userId", "username name profileImage")
-                .sort({ createdAt: -1 })
-                .lean();
+            const posts = await postsQuery.sort({ createdAt: -1 });
             return res.status(200).json({ success: true, posts });
         }
     } catch (error) {
@@ -146,11 +142,7 @@ router.get('/api/get/post/:id', checkTokenValidity, async (req, res, next) => {
             });
         }
 
-        const currentUserId = req.user.userId;
-
-        const post = await Post.findById(postId)
-            .populate("userId", "username name profileImage")
-            .lean();
+        const post = await Post.findById(postId);
 
         if (!post) {
             return res.status(404).json({
@@ -159,30 +151,13 @@ router.get('/api/get/post/:id', checkTokenValidity, async (req, res, next) => {
             });
         }
 
-        const [comments, myAlbums, myReport, reportCount] = await Promise.all([
-            Comment.find({ postId: post._id })
-                .populate("userId", "username name profileImage")
-                .sort({ createdAt: -1 }),
-            // Which of MY albums already contain this post (for the "Add to album" picker)
-            Album.find({ userId: currentUserId, postId: post._id }).select("_id").lean(),
-            Report.exists({ postId: post._id, reportedBy: currentUserId }),
-            Report.countDocuments({ postId: post._id })
-        ]);
-
-        const likedBy = post.likedBy || [];
-        delete post.likedBy; // don't ship the full list of likers
+        //get comments
+        const comments = await Comment.find({ postId: post._id }).sort({ createdAt: -1 });
 
         return res.status(200).json({
             success: true,
-            post: {
-                ...post,
-                likedByMe: likedBy.some(id => id.toString() === currentUserId),
-                commentCount: comments.length,
-                hidden: reportCount > 2
-            },
-            comments: comments,
-            myAlbumIds: myAlbums.map(a => a._id),
-            reportedByMe: !!myReport
+            post: post,
+            comments: comments
         });
         }catch(error){
             next(error);
@@ -191,48 +166,27 @@ router.get('/api/get/post/:id', checkTokenValidity, async (req, res, next) => {
 
 //create post
 router.post('/api/create/posts', checkTokenValidity, async (req, res, next) => {
-    const { caption, image, hashtags, albumIds = [] } = req.body;
+    const { caption, image, hashtages } = req.body;
 
     try {
         // Basic validation
-        if (!caption || !String(caption).trim() || !image) {
+        if (!caption || !image) {
             return res.status(400).json({
                 success: false,
                 message: "Caption and image are required."
             });
         }
-        // Only data-URL images (from the upload) or http(s) links
-        if (!/^data:image\/(png|jpe?g|gif|webp);base64,/.test(image) && !/^https?:\/\//.test(image)) {
-            return res.status(400).json({
-                success: false,
-                message: "Image must be an uploaded picture or an http(s) link."
-            });
-        }
 
-        const formattedHashtags = Post.formatHashtags(hashtags);
-
-        // Only albums the creator owns
-        const validAlbumIds = (Array.isArray(albumIds) ? albumIds : []).filter(id => mongoose.Types.ObjectId.isValid(id));
-        const albums = validAlbumIds.length
-            ? await Album.find({ _id: { $in: validAlbumIds }, userId: req.user.userId })
-            : [];
+        const formattedHashtags = Post.formattedHashtags(hashtages);
 
         // Pull userId directly from JWT middleware for security
         const post = await Post.create({
             userId: req.user.userId,
-            caption: String(caption).trim().slice(0, 2200),
+            caption: caption,
             image: image,
             hashtags: formattedHashtags,
-            likes: 0,
-            albums: albums.map(a => a._id)
+            likes: 0
         });
-
-        // Put it in the chosen albums and auto-add its tags to each album
-        for (const album of albums) {
-            album.postId.push(post._id);
-            album.hashtags = [...new Set([...(album.hashtags || []), ...formattedHashtags])];
-            await album.save();
-        }
 
         return res.status(201).json({
             success: true,
@@ -278,7 +232,7 @@ router.put('/api/update/post/:id', checkTokenValidity, async (req, res, next) =>
         if (caption !== undefined) existingPost.caption = caption;
         if (image !== undefined) existingPost.image = image;
         if (hashtags !== undefined){
-            existingPost.hashtags = Post.formatHashtags(hashtags);
+            existingPost.hashtags = Post.formattedHashtags(hashtags);
         }
 
         // Save updated document
@@ -318,56 +272,24 @@ router.delete('/api/delete/post/:id', checkTokenValidity, async (req, res, next)
         await Report.deleteMany({ postId });
 
         // Find albums containing this post
-        const parentAlbums = await Album.find({ postId: postId });
+        const parentAlbums = await Album.find({ posts: postId });
 
-        // Remove the post from albums; albums themselves are kept even if they end up empty
         for (let album of parentAlbums) {
-            album.postId = album.postId.filter(pId => pId.toString() !== postId);
-            await album.save();
+            // Remove post ID from album
+            album.posts = album.posts.filter(pId => pId.toString() !== postId);
+
+            //If album is now empty, delete the album
+            if (album.posts.length === 0) {
+                await Album.findByIdAndDelete(album._id);
+            } else {
+                await album.save();
+            }
         }
 
         return res.status(200).json({
             success: true,
             message: "Post deleted and parent albums cleaned up successfully."
         });
-    } catch (error) {
-        next(error);
-    }
-});
-
-//like / unlike a post (toggle). Atomic so double-clicks can't double count.
-router.post('/api/posts/:id/like', checkTokenValidity, async (req, res, next) => {
-    const postId = req.params.id;
-    const userId = req.user.userId;
-
-    try {
-        if (!mongoose.Types.ObjectId.isValid(postId)) {
-            return res.status(400).json({ success: false, message: "Invalid Post ID format." });
-        }
-
-        // Try to like (only matches if not liked yet)
-        let post = await Post.findOneAndUpdate(
-            { _id: postId, likedBy: { $ne: userId } },
-            { $addToSet: { likedBy: userId }, $inc: { likes: 1 } },
-            { new: true }
-        ).select("likes");
-
-        let liked = true;
-        if (!post) {
-            // Already liked -> unlike
-            post = await Post.findOneAndUpdate(
-                { _id: postId, likedBy: userId },
-                { $pull: { likedBy: userId }, $inc: { likes: -1 } },
-                { new: true }
-            ).select("likes");
-            liked = false;
-        }
-
-        if (!post) {
-            return res.status(404).json({ success: false, message: "Post not found." });
-        }
-
-        return res.status(200).json({ success: true, liked, likes: Math.max(0, post.likes) });
     } catch (error) {
         next(error);
     }
@@ -401,12 +323,11 @@ router.post('/api/posts/:id/comments', checkTokenValidity, async (req, res, next
             });
         }
 
-        const created = await Comment.create({
+        const comment = await Comment.create({
             postId: postId,
             userId: req.user.userId,
-            text: text.trim()
+            text: text
         });
-        const comment = await created.populate("userId", "username name profileImage");
 
         return res.status(201).json({
             success: true,
@@ -430,7 +351,7 @@ router.get('/api/posts/:id/comments', checkTokenValidity, async (req, res, next)
         }
 
         const comments = await Comment.find({ postId: postId })
-            .populate("userId", "username name profileImage")
+            .populate("userId", "username profilePicture") // Optional: populate user info
             .sort({ createdAt: -1 });
 
         return res.status(200).json({

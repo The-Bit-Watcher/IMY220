@@ -52,21 +52,7 @@ const UserSchema = new mongoose.Schema({
     },
     sentRequests: [{ 
             type: mongoose.Schema.Types.ObjectId, ref: "User" 
-        }],
-    // Incoming friend requests (the routes already relied on this field, it was missing from the schema)
-    friendRequests: [{
-        type: mongoose.Schema.Types.ObjectId, ref: "User"
-    }],
-    socialLinks: {
-        twitter: { type: String, default: "" },
-        github: { type: String, default: "" },
-        website: { type: String, default: "" }
-    },
-    role: {
-        type: String,
-        enum: ["user", "admin"],
-        default: "user"
-    }
+        }]
 });
 
 module.exports = mongoose.model(

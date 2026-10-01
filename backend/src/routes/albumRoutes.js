@@ -1,227 +1,343 @@
 const express = require("express");
 const router = express.Router();
 
+const User = require("../models/User");
 const checkTokenValidity = require("../Middleware/jwtVerifyMiddleware");
+const Comment = require("../models/Comment");
 const Album = require("../models/Albums");
 const Post = require("../models/Post");
+const {updateHashtagsForAlbum, syncAlbumHashtags} = require("../controllers/albumController");
 const { default: mongoose } = require("mongoose");
 
-const isId = (id) => mongoose.Types.ObjectId.isValid(id);
-const sameId = (a, b) => a?.toString() === b?.toString();
+//get all albums
+router.get('/api/get/albums/all', checkTokenValidity, async(req, res, next) => {
 
-// Union of two tag lists, normalised (lowercase, no '#', no duplicates)
-const mergeTags = (existing = [], incoming = []) =>
-    [...new Set([...existing, ...Post.formatHashtags(incoming)])];
-
-// Load an album and make sure the caller owns it. Sends the error response itself and returns null on failure.
-async function loadOwnedAlbum(req, res, albumId) {
-    if (!isId(albumId)) {
-        res.status(400).json({ success: false, message: "Invalid Album ID format." });
-        return null;
-    }
-    const album = await Album.findById(albumId);
-    if (!album) {
-        res.status(404).json({ success: false, message: "Album not found." });
-        return null;
-    }
-    if (!sameId(album.userId, req.user.userId)) {
-        res.status(403).json({ success: false, message: "You can only change your own albums." });
-        return null;
-    }
-    return album;
-}
-
-// ---------------------------------------------------------------------------
-// Read
-// ---------------------------------------------------------------------------
-router.get('/api/get/albums/all', checkTokenValidity, async (req, res, next) => {
-    try {
-        const albums = await Album.find().sort({ _id: -1 });
-        res.status(200).json({ success: true, albums });
-    } catch (error) {
-        next(error);
-    }
-});
-
-// My albums (used by the "Add to album" picker and the create-post page)
-router.get('/api/get/albums/me', checkTokenValidity, async (req, res, next) => {
-    try {
-        const albums = await Album.find({ userId: req.user.userId }).sort({ _id: -1 }).lean();
-        res.status(200).json({ success: true, albums });
-    } catch (error) {
-        next(error);
-    }
-});
-
-// One album with all its posts, in the order they were added
-router.get('/api/get/album/:id', checkTokenValidity, async (req, res, next) => {
-    const albumId = req.params.id;
-    try {
-        if (!isId(albumId)) {
-            return res.status(400).json({ success: false, message: "Invalid Album ID format." });
-        }
-
-        const album = await Album.findById(albumId)
-            .populate("userId", "username name profileImage")
-            .lean();
-
-        if (!album) {
-            return res.status(404).json({ success: false, message: "Album not found." });
-        }
-
-        const posts = await Post.find({ _id: { $in: album.postId || [] } })
-            .select("caption image hashtags likes createdAt userId")
-            .populate("userId", "username name")
-            .lean();
-
-        // Keep album order; silently skip posts that no longer exist
-        const byId = new Map(posts.map(p => [p._id.toString(), p]));
-        const ordered = (album.postId || []).map(id => byId.get(id.toString())).filter(Boolean);
-
-        return res.status(200).json({
+    try{
+        const albums = await Album.find().sort({createdAt: -1});
+        res.status(200).json({
             success: true,
-            album: { ...album, postId: ordered.map(p => p._id) },
-            posts: ordered,
-            isOwner: sameId(album.userId?._id, req.user.userId)
+            albums: albums || []
         });
-    } catch (error) {
+    }catch(error){
         next(error);
     }
 });
 
-// ---------------------------------------------------------------------------
-// Create / update / delete
-// ---------------------------------------------------------------------------
+//get all users album
+router.get('/api/get/albums/me', checkTokenValidity, async(req, res, next) => {
 
-// Create an album. Optional postIds puts posts in straight away; their hashtags are added to the album tags.
-router.post('/api/create/album', checkTokenValidity, async (req, res, next) => {
-    const { title, description, hashtags, postIds = [] } = req.body;
+    const userId = req.user.userId;
+    try{
+        const existingUser = await User.findById(userId);
 
-    try {
-        if (!title || !String(title).trim()) {
-            return res.status(400).json({ success: false, message: "Album title is required." });
+        if (!existingUser){
+            res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
         }
 
-        const validIds = (Array.isArray(postIds) ? postIds : []).filter(isId);
-        const posts = validIds.length ? await Post.find({ _id: { $in: validIds } }).select("hashtags") : [];
-
-        let tags = Post.formatHashtags(hashtags);
-        for (const p of posts) tags = mergeTags(tags, p.hashtags);
-
-        const album = await Album.create({
-            title: String(title).trim().slice(0, 80),
-            description: String(description || "").trim().slice(0, 500),
-            userId: req.user.userId,
-            hashtags: tags,
-            postId: posts.map(p => p._id)
+        //get albums or empty array
+        const albums = await Album.find({userId: existingUser._id}).sort({createdAt: -1});
+        
+        res.status(200).json({
+            success: true,
+            albums: albums || []
         });
-
-        if (posts.length) {
-            await Post.updateMany({ _id: { $in: album.postId } }, { $addToSet: { albums: album._id } });
-        }
-
-        return res.status(201).json({ success: true, album });
-    } catch (error) {
+    }catch(error){
         next(error);
     }
 });
 
-// Edit album name, description and tags (owner only)
-router.put('/api/update/album/:id', checkTokenValidity, async (req, res, next) => {
-    const { title, description, hashtags } = req.body;
 
-    try {
-        const album = await loadOwnedAlbum(req, res, req.params.id);
-        if (!album) return;
+//get an albums details and posts
+router.get('/api/get/album/:id', checkTokenValidity, async(req, res, next) => {
 
-        if (title !== undefined) {
-            if (!String(title).trim()) {
-                return res.status(400).json({ success: false, message: "Album title cannot be empty." });
-            }
-            album.title = String(title).trim().slice(0, 80);
+    const albumId = req.params.id;
+
+    try{
+        if (!mongoose.Types.ObjectId.isValid(albumId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Album ID format."
+            });
         }
-        if (description !== undefined) album.description = String(description).trim().slice(0, 500);
-        if (hashtags !== undefined) album.hashtags = Post.formatHashtags(hashtags);
 
-        const updatedAlbum = await album.save();
-        return res.status(200).json({ success: true, album: updatedAlbum });
-    } catch (error) {
-        next(error);
+        const album = await Album.findById(albumId);
+
+        if (!album){
+            res.status(404).json({
+                success: false,
+                message: 'No such album exists'
+            });
+        }
+
+        //need to get album and its posts inside it. we have the postIds
+        //need to get the data for each post
+        const posts = await Post.find({
+            _id: { $in: album.postId || [] }
+        }).sort({ createdAt: -1 });
+        
+        //return all album details with it post details
+        //due to not being production with huge
+        //will not handle many required loads.
+        res.status(200).json({
+            success: true,
+            album: album,
+            posts: posts
+        });
+    }catch(error){
+        next(error)
     }
 });
 
-// Delete an album. Posts are NOT deleted - they're only unlinked from the album.
-router.delete('/api/delete/album/:id', checkTokenValidity, async (req, res, next) => {
-    try {
-        const album = await loadOwnedAlbum(req, res, req.params.id);
-        if (!album) return;
+//delete an album(only delete the album leave posts intact)
+router.delete('/api/delete/album/:id', checkTokenValidity, async(req, res, next) => {
+    const userId = req.user._id;
+    const albumId = req.params.id;
 
-        await Post.updateMany({ albums: album._id }, { $pull: { albums: album._id } });
+    try{ 
+        if (!mongoose.Types.ObjectId.isValid(albumId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Album ID format."
+            });
+        }
+        //check if both exists before moving on.
+        const existingUser = await User.findById(userId); 
+        const album = await Album.findById({_id: albumId});
+
+        if (!existingUser){
+            res.status(404).json({
+                success: false, 
+                message: "User not found"
+            })
+        }
+
+        if (!album){
+            res.status(404).json({
+                success: false, 
+                message: "Album not found"
+            })
+        }
+
+        //hence not the owner trying to delete
+        if (album.userId.toString() !== userId) {
+            return res.status(403).json({
+                success: false,
+                message: "Unauthorized: You do not have rights to delete this album."
+            });
+        }
+
+        //remove the album
         await Album.findByIdAndDelete(album._id);
 
-        return res.status(200).json({
+        res.status(200).json({
             success: true,
-            message: `"${album.title}" deleted. Its posts were kept.`
+            message: `${album.title} deleted successfully`
+        })
+    }catch(error){
+        next(error);
+    }
+});
+
+
+//create an album
+//hashtags auto updated based on images in it. 
+router.post('/api/create/album', checkTokenValidity, async(req, res, next) => {
+    //get the name, userId we get from jwt, and post are empty of of now
+    //maybe later add a create for when you want to add to a album you can create and add
+    //but will be done later if I have the neccessary time
+    const {title, description} = req.body;
+
+    try{
+        // Basic validation
+        if (!title || !description) {
+            return res.status(400).json({
+                success: false,
+                message: "Bad request"
+            });
+        }
+
+        // Pull userId directly from JWT middleware for security
+        const album = await Album.create({
+            title: title,
+            description: description,
+            userId: req.user.userId,
+            hashtags: [],
+            postId: []
         });
-    } catch (error) {
+
+        res.status(200).json({
+            success: true,
+            album: album
+        })
+    }catch(error){
         next(error);
     }
 });
 
-// ---------------------------------------------------------------------------
-// Album membership
-// ---------------------------------------------------------------------------
+//edit album title. Hashtags will be auto changed based on posts in the album.
+router.put('/api/update/album/:id', checkTokenValidity, async (req, res, next) => {
+    const {title, description, hashtags} = req.body;
+    const albumId = req.params.id;
+    const userId = req.user.userId;
 
-// Add a post to an album. The post's hashtags are auto-added to the album's tags.
+    try{
+        if (!mongoose.Types.ObjectId.isValid(albumId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Album ID format."
+            });
+        }
+
+        if (!title){
+            res.status(400).json({
+                success: false,
+                message: 'Bad request'
+            })
+        }
+
+        //find album
+        const album = await Album.findById(albumId);
+
+        if (!album){
+            res.status(404).json({
+                success: false,
+                message: "Album does not exist"
+            });
+        }
+
+        //owner trying to edit is not owner
+        if (album.userId.toString() !== userId){
+            res.status(400).json({
+                success: false,
+                message: "You do not have the neccessary permission"
+            });
+        }
+
+        if (title !== undefined) album.title = title;
+        if (description !== undefined) album.description = description;
+        if (hashtags !== undefined){
+            album.hashtags = Post.formattedHashtags(hashtags);
+        }
+
+        const updatedAlbum = album.save();
+
+        res.status(200).json({
+            success: 200,
+            album: updatedAlbum
+        })
+    }catch(error){
+        next(error);
+    }
+});
+
+//add to an album
 router.post('/api/add/post', checkTokenValidity, async (req, res, next) => {
-    const { postId, albumId } = req.body;
+    const {postId, albumId} = req.body;
+    const userId = req.user.userId;
 
-    try {
-        if (!isId(postId)) {
-            return res.status(400).json({ success: false, message: "Invalid Post ID." });
+    try{
+        if (!mongoose.Types.ObjectId.isValid(postId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Post ID."
+            });
+        }
+        const post = Post.findById(postId);
+
+        if (!post){
+            res.status(404).json({
+                success: false,
+                message: 'Post does not exist'
+            });
         }
 
-        const album = await loadOwnedAlbum(req, res, albumId);
-        if (!album) return;
+        const existingAlbum = await Album.findById(albumId);
 
-        const post = await Post.findById(postId).select("hashtags");
-        if (!post) {
-            return res.status(404).json({ success: false, message: "Post does not exist." });
+        if (!existingAlbum){
+             res.status(404).json({
+                success: false,
+                message: 'Album does not exist'
+            });
         }
 
-        if (!album.postId.some(id => id.equals(post._id))) {
-            album.postId.push(post._id);
+        if (existingAlbum.userId.toString() !== userId){
+            res.status(400).json({
+                success: false,
+                message: "You do not have the neccessary permission"
+            });
         }
-        album.hashtags = mergeTags(album.hashtags, post.hashtags);
-        await album.save();
-        await Post.findByIdAndUpdate(post._id, { $addToSet: { albums: album._id } });
 
-        return res.status(200).json({ success: true, message: "Post added to album.", album });
-    } catch (error) {
+        // Prevent duplicate post entries in array
+        if (!existingAlbum.posts.some(id => id.equals(post._id))) {
+            existingAlbum.posts.push(post._id);
+        }
+
+        // Recalculate unique hashtags for the album
+        await syncAlbumHashtags(existingAlbum);
+        await existingAlbum.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Post added successfully',
+            album: existingAlbum
+        })
+    }catch(error){
         next(error);
     }
 });
 
-// Remove a post from an album (the post itself stays). Body: { postId, albumId }
+//remove from an album
 router.post('/api/remove/album/:id', checkTokenValidity, async (req, res, next) => {
-    const postId = req.body.postId;
-    const albumId = req.body.albumId || req.params.id;
+    const {postId, albumId} = req.body;
+    const userId = req.user.userId;
 
-    try {
-        if (!isId(postId)) {
-            return res.status(400).json({ success: false, message: "Invalid Post ID." });
+    try{
+        if (!mongoose.Types.ObjectId.isValid(postId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Post ID."
+            });
+        }
+        const post = Post.findById(postId);
+
+        if (!post){
+            res.status(404).json({
+                success: false,
+                message: 'Post does not exist'
+            });
         }
 
-        const album = await loadOwnedAlbum(req, res, albumId);
-        if (!album) return;
+        const existingAlbum = await Album.findById(albumId);
 
-        album.postId = album.postId.filter(id => id.toString() !== postId);
-        await album.save();
-        await Post.findByIdAndUpdate(postId, { $pull: { albums: album._id } });
+        if (!existingAlbum){
+             res.status(404).json({
+                success: false,
+                message: 'Album does not exist'
+            });
+        }
 
-        // Tags are left as they are: the owner may have curated them by hand
-        return res.status(200).json({ success: true, message: "Post removed from album.", album });
-    } catch (error) {
+        if (existingAlbum.userId.toString() !== userId){
+            res.status(400).json({
+                success: false,
+                message: "You do not have the neccessary permission"
+            });
+        }
+
+        existingAlbum.posts = existingAlbum.posts.filter(id => id.toString() !== postId);
+
+        // Recalculate unique hashtags for remaining posts
+        await syncAlbumHashtags(existingAlbum);
+        await existingAlbum.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Post added successfully',
+            album: existingAlbum
+        })
+    }catch(error){
         next(error);
     }
 });
