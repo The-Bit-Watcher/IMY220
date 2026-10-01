@@ -1,0 +1,353 @@
+const express = require("express");
+const router = express.Router();
+
+const User = require("../models/User");
+const checkTokenValidity = require("../Middleware/jwtVerifyMiddleware");
+const Comment = require("../models/Comment");
+const Album = require("../models/Albums");
+const Post = require("../models/Post");
+const { default: mongoose } = require("mongoose");
+
+//crud operations for profile page. Will get whole object with old val as defaults in new vals and then overwrite. Then send to backend
+//afterwards update mongodb. 
+//album creation and post creation if remember correctly here as well but split up in own routes and controller for better managment
+
+
+//use me. Not to give away any details ? We know who you are based on jwt! 
+//path then check if token is valid then request and response
+//the user/admin when doing rbac will be implemented later. Its authMiddleware files have been made but empty so far
+router.get('/api/profile/me', checkTokenValidity, async(req, res, next) => {
+    //only get his details. The images and friends will be seperate endpoints. 
+    // So we can minimize data flow only on required component switches+ reuse
+    //comes from the jwt, check authController and checkTokenValidity
+    try{
+        const existingUser = User.findById(req.user.userId);
+
+        if (!existingUser){
+            return res.status(404).json({
+                message: "User not found!"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            payload: existingUser
+        })
+    }catch(error){
+        next(error)
+    }
+});
+
+//might add soft delete and on sign in cancels it ???
+router.delete("/api/profile/me", checkTokenValidity, async (req, res, next) => {
+        const userId = req.user.userId;
+        const session = await mongoose.startSession();
+
+        try {
+            session.startTransaction();
+            // Check that the user exists
+            const existingUser = await User.findById(userId).session(session);
+            if (!existingUser) {
+                await session.abortTransaction();
+                return res.status(404).json({
+                    success: false,
+                    message: "User not found!"
+                });
+            }
+            // Find all posts belonging to this user
+            const userPosts = await Post
+                .find({ userId })
+                .select("_id")
+                .session(session);
+            const postIds = userPosts.map(post => post._id);
+            // Delete comments written by this user
+            await Comment.deleteMany(
+                { userId },
+                { session }
+            );
+            // Delete comments belonging to the user's posts
+            await Comment.deleteMany(
+                { postId: { $in: postIds } },
+                { session }
+            );
+            // Delete the user's posts
+            await Post.deleteMany(
+                { userId },
+                { session }
+            );
+            // Delete the user's albums
+            await Album.deleteMany(
+                { userId },
+                { session }
+            );
+            // Finally delete the user
+            await User.findByIdAndDelete(
+                userId,
+                { session }
+            );
+            await session.commitTransaction();
+
+            return res.status(200).json({
+                success: true,
+                message: "Account and associated data deleted successfully."
+            });
+        } catch (error) {
+            await session.abortTransaction();
+            next(error);
+        } finally {
+            await session.endSession();
+        }
+    });
+
+
+router.put('/api/profile/me', checkTokenValidity, async (req, res, next) => {
+    //will be used for all updates, except friends and favourites. Will have their own designated endpoints. 
+    // This will be your overall profile excluding friebds + fav. 
+    const {username, name, email, password, bio, profileImage, location} = req.body;
+
+    const updates = {};
+
+    if (username !== undefined) updates.username = username;
+    if (name !== undefined) updates.name = name;
+    if (email !== undefined) updates.email = email;
+    if (bio !== undefined) updates.bio = bio;
+    if (profileImage !== undefined) updates.profileImage = profileImage;
+    if (location !== undefined) updates.location = location;
+    
+    try{
+        const updatedUser = await User.findByIdAndUpdate(
+        req.user.userId,
+        updates,
+        { new: true });
+
+        if (!updatedUser) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+        //use this as state when User changes cause re-render in useEffect.
+        return res.status(200).json({
+            success: true,
+            data: updatedUser
+        });
+    }catch(error){
+        next(error);
+    }
+});
+
+//view profiles
+router.get('/api/users/:id', checkTokenValidity, async (req, res, next) => {
+    const targetUserId = req.params.id;
+    const currentUserId = req.user.userId;
+
+    try {
+        if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+            return res.status(400).json({ success: false, message: "Invalid User ID format." });
+        }
+
+        // Exclude hashedPassword instead of password
+        const user = await User.findById(targetUserId).select("-hashedPassword");
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found." });
+        }
+
+        // Default missing arrays to empty arrays to avoid runtime TypeErrors
+        const friends = user.friends || [];
+        const friendRequests = user.friendRequests || [];
+        const sentRequests = user.sentRequests || [];
+
+        // Check relationship status safely
+        const isSelf = targetUserId === currentUserId;
+        const isFriend = friends.some(id => id.toString() === currentUserId);
+
+        let relationshipStatus = "none";
+        if (isSelf) relationshipStatus = "self";
+        else if (isFriend) relationshipStatus = "friends";
+        else if (friendRequests.some(id => id.toString() === currentUserId)) relationshipStatus = "request_sent";
+        else if (sentRequests.some(id => id.toString() === currentUserId)) relationshipStatus = "request_received";
+
+        const userResponse = user.toObject();
+
+        if (isSelf || isFriend) {
+            await User.populate(userResponse, { path: "friends", select: "username profilePicture" });
+        } else {
+            delete userResponse.friends;
+        }
+
+        return res.status(200).json({
+            success: true,
+            user: userResponse,
+            relationshipStatus: relationshipStatus
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+//send friend request
+router.post('/api/friends/request/:id', checkTokenValidity, async (req, res, next) => {
+    const recipientId = req.params.id;
+    const senderId = req.user.userId;
+
+    try {
+        if (!mongoose.Types.ObjectId.isValid(recipientId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid User ID format."
+            });
+        }
+
+        if (senderId === recipientId) {
+            return res.status(400).json({
+                success: false,
+                message: "You cannot send a friend request to yourself."
+            });
+        }
+
+        const recipient = await User.findById(recipientId);
+        const sender = await User.findById(senderId);
+
+        if (!recipient || !sender) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found."
+            });
+        }
+
+        // Check if already friends or request already pending
+        if (sender.friends.includes(recipientId)) {
+            return res.status(400).json({
+                success: false,
+                message: "You are already friends with this user."
+            });
+        }
+
+        if (recipient.friendRequests.includes(senderId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Friend request already sent."
+            });
+        }
+
+        // Update recipient's incoming requests and sender's sent requests
+        await User.findByIdAndUpdate(recipientId, { $addToSet: { friendRequests: senderId } });
+        await User.findByIdAndUpdate(senderId, { $addToSet: { sentRequests: recipientId } });
+
+        return res.status(200).json({
+            success: true,
+            message: "Friend request sent successfully."
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+//accept friend request
+router.post('/api/friends/accept/:id', checkTokenValidity, async (req, res, next) => {
+    const senderId = req.params.id; // User who sent the request
+    const currentUserId = req.user.userId; // Current logged-in user
+
+    try {
+        if (!mongoose.Types.ObjectId.isValid(senderId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid User ID format."
+            });
+        }
+
+        const currentUser = await User.findById(currentUserId);
+
+        // Verify request exists
+        if (!currentUser.friendRequests.includes(senderId)) {
+            return res.status(400).json({
+                success: false,
+                message: "No pending friend request from this user."
+            });
+        }
+
+        // 1. Add each other to friends array
+        // 2. Remove pending IDs from friendRequests / sentRequests
+        await User.findByIdAndUpdate(currentUserId, {
+            $addToSet: { friends: senderId },
+            $pull: { friendRequests: senderId }
+        });
+
+        await User.findByIdAndUpdate(senderId, {
+            $addToSet: { friends: currentUserId },
+            $pull: { sentRequests: currentUserId }
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Friend request accepted."
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+//reject+cancel friend request
+router.post('/api/friends/reject/:id', checkTokenValidity, async (req, res, next) => {
+    const targetUserId = req.params.id;
+    const currentUserId = req.user.userId;
+
+    try {
+        if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid User ID format."
+            });
+        }
+
+        // Remove from pending lists for both directions (handles reject or cancel)
+        await User.findByIdAndUpdate(currentUserId, {
+            $pull: { friendRequests: targetUserId, sentRequests: targetUserId }
+        });
+
+        await User.findByIdAndUpdate(targetUserId, {
+            $pull: { friendRequests: currentUserId, sentRequests: currentUserId }
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Friend request cancelled/rejected."
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+//unfriend a user
+router.delete('/api/friends/unfriend/:id', checkTokenValidity, async (req, res, next) => {
+    const friendId = req.params.id;
+    const currentUserId = req.user.userId;
+
+    try {
+        if (!mongoose.Types.ObjectId.isValid(friendId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid User ID format."
+            });
+        }
+
+        // Remove each other from friends array
+        await User.findByIdAndUpdate(currentUserId, {
+            $pull: { friends: friendId }
+        });
+
+        await User.findByIdAndUpdate(friendId, {
+            $pull: { friends: currentUserId }
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Unfriended successfully."
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+module.exports = router;

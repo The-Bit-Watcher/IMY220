@@ -6,6 +6,12 @@ services:
     volumes:
       - ./backend:/app
       - /app/node_modules
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/social_app
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - mongodb
+      - redis
 
   frontend:
     build: ./frontend
@@ -18,3 +24,18 @@ services:
       - VITE_API_URL=http://localhost:5000
     depends_on:
       - backend
+
+  mongodb:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+
+volumes:
+  mongodb_data:

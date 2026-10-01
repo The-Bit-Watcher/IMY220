@@ -1,6 +1,8 @@
 # IMY220
 Picture upload and sharing Website
 
+# Redis
+Start redis command: sudo systemctl status redis-server
 
 # Docker
 sudo service docker start

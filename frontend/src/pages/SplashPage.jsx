@@ -1,8 +1,5 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { users } from '../data/mockProfiles';
-
-const getRandomAvatar = (seed) => `https://api.dicebear.com/7.x/bottts/svg?seed=${seed}`;
 
 function SplashPage() {
   const navigate = useNavigate();
@@ -11,6 +8,7 @@ function SplashPage() {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const [signUpUsername, setSignUpUsername] = useState('');
   const [signUpName, setSignUpName] = useState('');
@@ -19,8 +17,10 @@ function SplashPage() {
   const [signUpConfirmPassword, setSignUpConfirmPassword] = useState('');
   const [signUpError, setSignUpError] = useState('');
   const [signUpSuccess, setSignUpSuccess] = useState('');
+  const [isSigningUp, setIsSigningUp] = useState(false);
 
-  const handleLoginSubmit = (e) => {
+  // Real Backend Login Request
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setLoginError('');
 
@@ -29,24 +29,51 @@ function SplashPage() {
       return;
     }
 
-    const foundUser = users.find(u => u.email.toLowerCase() === loginEmail.toLowerCase());
+    setIsLoggingIn(true);
 
-    if (foundUser) {
-      localStorage.setItem('currentUser', JSON.stringify(foundUser));
+    try {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: loginEmail,
+          password: loginPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Invalid login credentials.');
+      }
+      const token = data.data?.token || data.token;
+      // Save user session and token
+      if (token) {
+        localStorage.setItem('token', token);
+      }
+      localStorage.setItem('currentUser', JSON.stringify(data.user || data || data.data));
+
       navigate('/home');
-    } else {
-      localStorage.setItem('currentUser', JSON.stringify(users[0]));
-      navigate('/home');
+    } catch (err) {
+      console.error('Login error:', err);
+      setLoginError(err.message || 'Server connection failed.');
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
-  const handleSignUpSubmit = (e) => {
+  // Real Backend Sign Up Request
+  const handleSignUpSubmit = async (e) => {
     e.preventDefault();
     setSignUpError('');
     setSignUpSuccess('');
 
-    if (!signUpUsername || !signUpName || !signUpEmail || !signUpPassword) {
-      setSignUpError('All fields are required.');
+    const nameToSend = signUpName.trim() !== '' ? signUpName : signUpUsername;
+
+    if (!signUpUsername || !signUpEmail || !signUpPassword) {
+      setSignUpError('All required fields must be filled.');
       return;
     }
 
@@ -55,56 +82,57 @@ function SplashPage() {
       return;
     }
 
-    const emailExists = users.some(u => u.email.toLowerCase() === signUpEmail.toLowerCase());
-    if (emailExists) {
-      setSignUpError('An account with this email address already exists.');
-      return;
+    setIsSigningUp(true);
+
+    try {
+      const response = await fetch('/api/signup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: signUpUsername,
+          name: signUpName,
+          email: signUpEmail,
+          password: signUpPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Registration failed.');
+      }
+
+      setSignUpSuccess('Account created successfully! Auto-logging you in...');
+      const token = data.data?.token || data.token;
+      if (token) {
+        localStorage.setItem('token', token);
+      }
+      localStorage.setItem('currentUser', JSON.stringify(data.user || data || data.data));
+
+      setTimeout(() => {
+        navigate('/home');
+      }, 1200);
+    } catch (err) {
+      console.error('Sign up error:', err);
+      setSignUpError(err.message || 'Server error during registration.');
+    } finally {
+      setIsSigningUp(false);
     }
-
-    const newUser = {
-      id: Date.now(),
-      username: signUpUsername,
-      name: signUpName,
-      email: signUpEmail,
-      bio: "New developer community member.",
-      profileImage: getRandomAvatar(signUpUsername),
-      location: "Pretoria, South Africa",
-      joinedDate: new Date().toISOString().split('T')[0],
-      friendIds: [],
-      favoriteIds: []
-    };
-
-    users.push(newUser);
-
-    setSignUpSuccess('Account created successfully! Auto-logging you in...');
-    setTimeout(() => {
-      localStorage.setItem('currentUser', JSON.stringify(newUser));
-      navigate('/home');
-    }, 1200);
   };
 
   return (
     <div>
       <div>
-        <div >
-          
+        <div>
           <div>
-            <span>
-              Welcome to LifeSocialCapture
-            </span>
-            <h1>
-              Connect. Share. Build Together.
-            </h1>
-            <p>
-              A community platform for sharing images.
-            </p>
+            <span>Welcome to LifeSocialCapture</span>
+            <h1>Connect. Share. Build Together.</h1>
+            <p>A community platform for sharing images.</p>
             <div className="flex flex-wrap gap-4">
-              <a 
-                href="#features" >
-                Explore Features
-              </a>
-              <button 
-                onClick={() => setActiveTab('signup')}>
+              <a href="#features">Explore Features</a>
+              <button onClick={() => setActiveTab('signup')}>
                 Join Community
               </button>
             </div>
@@ -112,32 +140,19 @@ function SplashPage() {
 
           <div>
             <div>
-
               <div>
-                <button
-                  onClick={() => setActiveTab('login')}>
-                  Log In
-                </button>
-                <button
-                  onClick={() => setActiveTab('signup')}>
-                  Sign Up
-                </button>
+                <button onClick={() => setActiveTab('login')}>Log In</button>
+                <button onClick={() => setActiveTab('signup')}>Sign Up</button>
               </div>
 
               <div className="p-6">
                 {activeTab === 'login' && (
                   <form onSubmit={handleLoginSubmit}>
                     <h4>Welcome Back</h4>
-                    {loginError && (
-                      <div>
-                        {loginError}
-                      </div>
-                    )}
+                    {loginError && <div className="text-red-500">{loginError}</div>}
 
                     <div>
-                      <label>
-                        Email Address
-                      </label>
+                      <label>Email Address</label>
                       <input
                         type="email"
                         placeholder="xx@example.com"
@@ -148,9 +163,7 @@ function SplashPage() {
                     </div>
 
                     <div>
-                      <label>
-                        Password
-                      </label>
+                      <label>Password</label>
                       <input
                         type="password"
                         placeholder="*****"
@@ -160,30 +173,17 @@ function SplashPage() {
                       />
                     </div>
 
-                    <button
-                      type="submit">
-                      Log In
+                    <button type="submit" disabled={isLoggingIn}>
+                      {isLoggingIn ? 'Logging in...' : 'Log In'}
                     </button>
-
-                    <p>
-                      Tip: Use <span>shaun@example.com</span> to log in instantly.
-                    </p>
                   </form>
                 )}
 
                 {activeTab === 'signup' && (
                   <form onSubmit={handleSignUpSubmit} className="space-y-3">
                     <h4>Create Account</h4>
-                    {signUpError && (
-                      <div>
-                        {signUpError}
-                      </div>
-                    )}
-                    {signUpSuccess && (
-                      <div>
-                        {signUpSuccess}
-                      </div>
-                    )}
+                    {signUpError && <div className="text-red-500">{signUpError}</div>}
+                    {signUpSuccess && <div className="text-green-500">{signUpSuccess}</div>}
 
                     <div>
                       <label>Full Name</label>
@@ -192,8 +192,6 @@ function SplashPage() {
                         placeholder="Peter John"
                         value={signUpName}
                         onChange={(e) => setSignUpName(e.target.value)}
-                        required
-
                       />
                     </div>
 
@@ -242,9 +240,8 @@ function SplashPage() {
                       </div>
                     </div>
 
-                    <button
-                      type="submit">
-                      Register Account
+                    <button type="submit" disabled={isSigningUp}>
+                      {isSigningUp ? 'Creating Account...' : 'Register Account'}
                     </button>
                   </form>
                 )}

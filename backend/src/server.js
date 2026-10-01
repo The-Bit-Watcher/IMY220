@@ -1,26 +1,41 @@
-const express = require('express');
+const express = require("express");
+const mongoose = require("mongoose");
+require("dotenv").config({
+    path: "../.env"
+});
+
+const authRoutes = require("./routes/authRoutes");
+const albumRoutes = require("./routes/albumRoutes");
+const postRoutes = require("./routes/postRoutes");
+const profileRoutes = require("./routes/profileRoutes");
+const adminRoutes = require("./routes/adminRoutes");
+const { connectRedis } = require("./config/redis");
+
 const app = express();
 
 app.use(express.json());
 
-// Sign-in endpoint returning dummy data
-app.post('/api/login', (req, res) => {
-  const { email } = req.body;
-  res.status(200).json({
-    status: 'success',
-    token: 'dummy-jwt-token-abc-123',
-    user: { id: 'u123', email: email, name: 'Test User' }
-  });
-});
+app.use(authRoutes);
+app.use(profileRoutes);
+app.use(postRoutes);
+app.use(albumRoutes);
 
-// Sign-up endpoint returning dummy data
-app.post('/api/signup', (req, res) => {
-  const { username, email } = req.body;
-  res.status(201).json({
-    status: 'success',
-    message: 'User created successfully',
-    user: { id: 'u124', username, email }
-  });
-});
+async function startServer() {
+    try {
+        await connectRedis();
 
-app.listen(5000, () => console.log('Server running on port 5000'));
+        await mongoose.connect(process.env.DB_URL);
+
+        app.listen(5000, () => {
+            console.log(
+                "Server running on port 5000"
+            );
+        });
+
+    } catch (err) {
+        console.error("Server startup failed:", err);
+        process.exit(1);
+    }
+}
+
+startServer();
