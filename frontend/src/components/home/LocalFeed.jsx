@@ -1,66 +1,146 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PostPreview from '../common/PostPreview/PostPreview';
-import { posts } from '../../data/mockPosts';
-import { users } from '../../data/mockProfiles';
 
-function LocalFeed({ currentUserId = 1, searchTerm = '' }) {
+function LocalFeed({ filterOptions = {} }) {
   const navigate = useNavigate();
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const currentUser = users.find(u => u.id === currentUserId) || users[0];
-  const friendIds = currentUser.friendIds || [];
-  const favoriteIds = currentUser.favoriteIds || [];
+  const {
+    sortBy = 'newest',
+    hashtagFilter = '',
+    timeframe = 'all',
+    searchTerm = ''
+  } = filterOptions;
 
-  let localPosts = posts.filter(post => 
-    friendIds.includes(post.userId) || favoriteIds.includes(post.userId)
-  );
+  useEffect(() => {
+    const fetchLocalPosts = async () => {
+      try {
+        setLoading(true);
+        const token = localStorage.getItem('token');
+        const response = await fetch('/api/get/local', {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token && { Authorization: `Bearer ${token}` })
+          }
+        });
 
-  if (searchTerm) {
-    localPosts = localPosts.filter(post => 
-      (post.title && post.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (post.caption && post.caption.toLowerCase().includes(searchTerm.toLowerCase()))
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        setPosts(data.posts || data || []);
+      } catch (err) {
+        console.error('Error fetching local posts:', err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLocalPosts();
+  }, []);
+
+  const processedPosts = useMemo(() => {
+    return posts.filter(post => {
+      // 1. Safety Filter: Hide posts with > 2 reports
+      if (post.reports && post.reports > 2) return false;
+
+      // 2. Search Term Filter
+      if (searchTerm) {
+        const query = searchTerm.toLowerCase();
+        const matchesTitle = post.title?.toLowerCase().includes(query);
+        const matchesCaption = post.caption?.toLowerCase().includes(query);
+        if (!matchesTitle && !matchesCaption) return false;
+      }
+
+      // 3. Hashtag Filter
+      if (hashtagFilter) {
+        const cleanTag = hashtagFilter.replace(/^#/, '').toLowerCase();
+        const matchesTag = post.hashtags?.some(tag => tag.toLowerCase().includes(cleanTag)) ||
+          post.caption?.toLowerCase().includes(`#${cleanTag}`);
+        if (!matchesTag) return false;
+      }
+
+      // 4. Timeframe Filter
+      if (timeframe !== 'all') {
+        const postDate = new Date(post.createdAt || 0);
+        const now = new Date();
+        const diffInDays = (now - postDate) / (1000 * 60 * 60 * 24);
+
+        if (timeframe === 'week' && diffInDays > 7) return false;
+        if (timeframe === 'month' && diffInDays > 30) return false;
+      }
+
+      return true;
+    }).sort((a, b) => {
+      // Primary sort: Favorites float to the top
+      if (a.isFavorite && !b.isFavorite) return -1;
+      if (!a.isFavorite && b.isFavorite) return 1;
+
+      // Secondary sort options
+      if (sortBy === 'comments') {
+        return (b.commentsCount || b.comments?.length || 0) - (a.commentsCount || a.comments?.length || 0);
+      }
+
+      // Default: Newest first
+      const dateA = new Date(a.createdAt || 0);
+      const dateB = new Date(b.createdAt || 0);
+      return dateB - dateA;
+    });
+  }, [posts, searchTerm, hashtagFilter, timeframe, sortBy]);
+
+  if (loading) {
+    return (
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-400">
+        <p className="text-sm">Loading local feed...</p>
+      </div>
     );
   }
 
-  localPosts.sort((a, b) => {
-    const isAFav = favoriteIds.includes(a.userId);
-    const isBFav = favoriteIds.includes(b.userId);
-    if (isAFav && !isBFav) return -1;
-    if (!isAFav && isBFav) return 1;
-    return b.id - a.id;
-  });
-
-  if (localPosts.length === 0) {
+  if (error) {
     return (
-      <div>
-        <h5>No local posts yet</h5>
-        <p>Add friends or favorites to customize your personal feed!</p>
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-red-400">
+        <p className="text-sm">Failed to load local feed. Please try again later.</p>
+      </div>
+    );
+  }
+
+  if (processedPosts.length === 0) {
+    return (
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-400">
+        <h5 className="font-semibold text-slate-200 text-base mb-1">No friends or favorites posts found</h5>
+        <p className="text-xs text-slate-400">Try adjusting your filter settings or connect with more friends!</p>
       </div>
     );
   }
 
   return (
-    <div>
-      {localPosts.map(post => {
-        const author = users.find(u => u.id === post.userId);
-        const isFav = favoriteIds.includes(post.userId);
+    <div className="space-y-4">
+      {processedPosts.map(post => {
+        const postId = post._id || post.id;
+        const authorName = post.userId?.name || post.userId?.username || post.username || 'Friend';
 
         return (
           <div
-            key={post.id}
-            onClick={() => navigate(`/post/${post.id}`)}
+            key={postId}
+            onClick={() => navigate(`/post/${postId}`)}
+            className="relative cursor-pointer transition-transform hover:-translate-y-0.5"
           >
-            {isFav && (
-              <span>
-                Favorite
+            {post.isFavorite && (
+              <span className="absolute top-3 right-3 z-10 bg-amber-500/20 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-500/30">
+                ★ Favorite
               </span>
             )}
             <PostPreview
-              title={post.title || post.caption || 'Untitled Post'}
-              username={author ? author.name : 'Friend'}
-              date={post.dates || post.createdAt ? new Date(post.createdAt || post.dates).toLocaleDateString() : 'Recently'}
+              title={post.caption || post.title || 'Untitled Post'}
+              username={authorName}
+              date={post.createdAt ? new Date(post.createdAt).toLocaleDateString() : 'Recently'}
               likes={post.likes || 0}
-              img={post.image || post.imageFile || post.img || 'https://via.placeholder.com/300x200'}
+              img={post.image || 'https://via.placeholder.com/300x200'}
             />
           </div>
         );

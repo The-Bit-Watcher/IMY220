@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import Logout from '../Logout/LogOut';
-import { users } from '../../../data/mockProfiles';
+import { AvatarDisplay } from '../../../utils/avatarGenerator';
 
-function Header({ currentUserId = 1 }) {
+function Header() {
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
-  const currentUser = users.find(u => u.id === currentUserId) || users[0];
+
+  // Retrieve user directly from localStorage
+  const rawUserData = JSON.parse(localStorage.getItem("currentUser") || "{}");
+  const currentUser = rawUserData.data || rawUserData;
 
   const linkClass = ({ isActive }) =>
     `text-sm font-medium transition-colors ${
@@ -29,25 +32,24 @@ function Header({ currentUserId = 1 }) {
             <NavLink to="/home" className={linkClass}>
               Home
             </NavLink>
-            <NavLink to="/post/1" className={linkClass}>
-              Sample Post
-            </NavLink>
-            <NavLink to={`/profile/${currentUser.id}`} className={linkClass}>
+            <NavLink to="/profile" className={linkClass}>
               Profile
             </NavLink>
           </nav>
 
           <div className="hidden md:flex items-center gap-4">
             <div 
-              onClick={() => navigate(`/profile/${currentUser.id}`)}
+              onClick={() => navigate('/profile')}
               className="flex items-center gap-2.5 cursor-pointer p-1.5 rounded-xl hover:bg-slate-800 transition-colors"
             >
-              <img 
-                src={currentUser.profileImage} 
-                alt={currentUser.name} 
-                className="w-8 h-8 rounded-full object-cover border border-slate-700"
+              <AvatarDisplay 
+                username={currentUser?.username || currentUser?.name || 'User'} 
+                src={currentUser?.profilePicture} 
+                className="w-8 h-8"
               />
-              <span className="text-xs font-semibold text-slate-200">{currentUser.name}</span>
+              <span className="text-xs font-semibold text-slate-200">
+                {currentUser?.name || currentUser?.username || 'Profile'}
+              </span>
             </div>
             <Logout />
           </div>
@@ -72,20 +74,21 @@ function Header({ currentUserId = 1 }) {
       {isOpen && (
         <div className="md:hidden bg-slate-900 border-b border-slate-800 px-4 pt-2 pb-4 space-y-3">
           <NavLink to="/home" className={`block ${linkClass}`}>Home</NavLink>
-          <NavLink to="/post/1" className={`block ${linkClass}`}>Sample Post</NavLink>
-          <NavLink to={`/profile/${currentUser.id}`} className={`block ${linkClass}`}>Profile</NavLink>
+          <NavLink to="/profile" className={`block ${linkClass}`}>Profile</NavLink>
 
           <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
             <div 
-              onClick={() => navigate(`/profile/${currentUser.id}`)}
+              onClick={() => navigate('/profile')}
               className="flex items-center gap-2 cursor-pointer"
             >
-              <img 
-                src={currentUser.profileImage} 
-                alt={currentUser.name} 
-                className="w-8 h-8 rounded-full object-cover border border-slate-700"
+              <AvatarDisplay 
+                username={currentUser?.username || currentUser?.name || 'User'} 
+                src={currentUser?.profilePicture} 
+                className="w-8 h-8"
               />
-              <span className="text-xs font-semibold text-slate-200">{currentUser.name}</span>
+              <span className="text-xs font-semibold text-slate-200">
+                {currentUser?.name || currentUser?.username || 'Profile'}
+              </span>
             </div>
             <Logout />
           </div>

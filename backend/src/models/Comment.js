@@ -21,7 +21,7 @@ const CommentSchema = mongoose.Schema({
     }
 });
 
-module.exports = mongoose.Model(
+module.exports = mongoose.model(
     "Comment",
     CommentSchema
 )

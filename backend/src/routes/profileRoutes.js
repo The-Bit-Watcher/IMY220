@@ -1,3 +1,6 @@
+const express = require("express");
+const router = express.Router();
+
 const User = require("../models/User");
 const checkTokenValidity = require("../Middleware/jwtVerifyMiddleware");
 const Comment = require("../models/Comment");
@@ -13,7 +16,7 @@ const { default: mongoose } = require("mongoose");
 //use me. Not to give away any details ? We know who you are based on jwt! 
 //path then check if token is valid then request and response
 //the user/admin when doing rbac will be implemented later. Its authMiddleware files have been made but empty so far
-app.get('/api/profile/me', checkTokenValidity, async(req, res, next) => {
+router.get('/api/profile/me', checkTokenValidity, async(req, res, next) => {
     //only get his details. The images and friends will be seperate endpoints. 
     // So we can minimize data flow only on required component switches+ reuse
     //comes from the jwt, check authController and checkTokenValidity
@@ -36,7 +39,7 @@ app.get('/api/profile/me', checkTokenValidity, async(req, res, next) => {
 });
 
 //might add soft delete and on sign in cancels it ???
-app.delete("/api/profile/me", checkTokenValidity, async (req, res, next) => {
+router.delete("/api/profile/me", checkTokenValidity, async (req, res, next) => {
         const userId = req.user.userId;
         const session = await mongoose.startSession();
 
@@ -97,7 +100,7 @@ app.delete("/api/profile/me", checkTokenValidity, async (req, res, next) => {
     });
 
 
-app.put('/api/profile/me', checkTokenValidity, async (req, res, next) => {
+router.put('/api/profile/me', checkTokenValidity, async (req, res, next) => {
     //will be used for all updates, except friends and favourites. Will have their own designated endpoints. 
     // This will be your overall profile excluding friebds + fav. 
     const {username, name, email, password, bio, profileImage, location} = req.body;
@@ -134,7 +137,7 @@ app.put('/api/profile/me', checkTokenValidity, async (req, res, next) => {
 });
 
 //view profiles
-app.get('/api/users/:id', checkTokenValidity, async (req, res, next) => {
+router.get('/api/users/:id', checkTokenValidity, async (req, res, next) => {
     const targetUserId = req.params.id;
     const currentUserId = req.user.userId;
 
@@ -143,30 +146,34 @@ app.get('/api/users/:id', checkTokenValidity, async (req, res, next) => {
             return res.status(400).json({ success: false, message: "Invalid User ID format." });
         }
 
-        const user = await User.findById(targetUserId).select("-password");
+        // Exclude hashedPassword instead of password
+        const user = await User.findById(targetUserId).select("-hashedPassword");
 
         if (!user) {
             return res.status(404).json({ success: false, message: "User not found." });
         }
 
-        // Check relationship status
+        // Default missing arrays to empty arrays to avoid runtime TypeErrors
+        const friends = user.friends || [];
+        const friendRequests = user.friendRequests || [];
+        const sentRequests = user.sentRequests || [];
+
+        // Check relationship status safely
         const isSelf = targetUserId === currentUserId;
-        const isFriend = user.friends.some(id => id.toString() === currentUserId);
+        const isFriend = friends.some(id => id.toString() === currentUserId);
 
         let relationshipStatus = "none";
         if (isSelf) relationshipStatus = "self";
         else if (isFriend) relationshipStatus = "friends";
-        else if (user.friendRequests.some(id => id.toString() === currentUserId)) relationshipStatus = "request_sent";
-        else if (user.sentRequests.some(id => id.toString() === currentUserId)) relationshipStatus = "request_received";
+        else if (friendRequests.some(id => id.toString() === currentUserId)) relationshipStatus = "request_sent";
+        else if (sentRequests.some(id => id.toString() === currentUserId)) relationshipStatus = "request_received";
 
-        // Convert user to plain JS object to modify output
         const userResponse = user.toObject();
 
-        // Populate friends ONLY if user is self or established friends
         if (isSelf || isFriend) {
             await User.populate(userResponse, { path: "friends", select: "username profilePicture" });
         } else {
-            delete userResponse.friends; // Omit friends list completely for non-friends
+            delete userResponse.friends;
         }
 
         return res.status(200).json({
@@ -180,7 +187,7 @@ app.get('/api/users/:id', checkTokenValidity, async (req, res, next) => {
 });
 
 //send friend request
-app.post('/api/friends/request/:id', checkTokenValidity, async (req, res, next) => {
+router.post('/api/friends/request/:id', checkTokenValidity, async (req, res, next) => {
     const recipientId = req.params.id;
     const senderId = req.user.userId;
 
@@ -238,7 +245,7 @@ app.post('/api/friends/request/:id', checkTokenValidity, async (req, res, next) 
 });
 
 //accept friend request
-app.post('/api/friends/accept/:id', checkTokenValidity, async (req, res, next) => {
+router.post('/api/friends/accept/:id', checkTokenValidity, async (req, res, next) => {
     const senderId = req.params.id; // User who sent the request
     const currentUserId = req.user.userId; // Current logged-in user
 
@@ -282,7 +289,7 @@ app.post('/api/friends/accept/:id', checkTokenValidity, async (req, res, next) =
 });
 
 //reject+cancel friend request
-app.post('/api/friends/reject/:id', checkTokenValidity, async (req, res, next) => {
+router.post('/api/friends/reject/:id', checkTokenValidity, async (req, res, next) => {
     const targetUserId = req.params.id;
     const currentUserId = req.user.userId;
 
@@ -313,7 +320,7 @@ app.post('/api/friends/reject/:id', checkTokenValidity, async (req, res, next) =
 });
 
 //unfriend a user
-app.delete('/api/friends/unfriend/:id', checkTokenValidity, async (req, res, next) => {
+router.delete('/api/friends/unfriend/:id', checkTokenValidity, async (req, res, next) => {
     const friendId = req.params.id;
     const currentUserId = req.user.userId;
 
@@ -342,3 +349,5 @@ app.delete('/api/friends/unfriend/:id', checkTokenValidity, async (req, res, nex
         next(error);
     }
 });
+
+module.exports = router;

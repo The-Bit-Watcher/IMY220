@@ -1,5 +1,7 @@
 //will be used for endpoints used by a Post in the system. The normal crud for post.
 // Will have a separate for Album, meaning addition and removal+creation adn deletion
+const express = require("express");
+const router = express.Router();
 
 const User = require("../models/User");
 const checkTokenValidity = require("../Middleware/jwtVerifyMiddleware");
@@ -10,9 +12,9 @@ const Post = require("../models/Post");
 const { default: mongoose } = require("mongoose");
 
 //get Posts of User, use the jwt to get the item.
-app.get('/api/get/posts/me', checkTokenValidity, async (req, res) => {
+router.get('/api/get/posts/me', checkTokenValidity, async (req, res) => {
     try{
-        const existingUser = User.findById(req.user.userId);
+        const existingUser = await User.findById(req.user.userId);
 
         //no user then no posts. 
         if (!existingUser){
@@ -40,7 +42,7 @@ app.get('/api/get/posts/me', checkTokenValidity, async (req, res) => {
 });
 
 //global feed
-app.get('/api/get/global', checkTokenValidity, async (req, res, next) => {
+router.get('/api/get/global', checkTokenValidity, async (req, res, next) => {
     try {
         const { sortBy, tag } = req.query;
         let filter = {};
@@ -90,53 +92,46 @@ app.get('/api/get/global', checkTokenValidity, async (req, res, next) => {
 });
 
 // Local Feed (Friends + Favorites with Sorting)
-app.get('/api/get/local', checkTokenValidity, async (req, res, next) => {
-    try {
-        const { sortBy, tag } = req.query;
-        const existingUser = await User.findById(req.user.userId);
+router.get("/api/get/local", checkTokenValidity, async (req, res, next) => {
+  try {
+    const currentUserId = req.user?.userId;
 
-        if (!existingUser) {
-            return res.status(404).json({ message: "User not found!" });
-        }
-
-        const friendsList = existingUser.friends || [];
-        const favoritesList = existingUser.favouriteIds || [];
-        const allRelevantUserIds = [...new Set([...friendsList, ...favoritesList])];
-
-        // Exclude posts reported > 2 times
-        const heavilyReportedPosts = await Report.aggregate([
-            { $group: { _id: "$postId", count: { $sum: 1 } } },
-            { $match: { count: {$gt: 2 } } }
-        ]);
-        const hiddenPostIds = heavilyReportedPosts.map(r => r._id);
-
-        let filter = {
-            userId: { $in: allRelevantUserIds },
-            _id: { $nin: hiddenPostIds }
-        };
-
-        if (tag) {
-            filter.hashtags = tag.startsWith('#') ? tag : `#${tag}`;
-        }
-
-        let posts = await Post.find(filter).sort({ createdAt: -1 });
-
-        // Prioritize Favorite Users first
-        posts = posts.sort((a, b) => {
-            const aIsFav = favoritesList.some(id => id.equals(a.userId));
-            const bIsFav = favoritesList.some(id => id.equals(b.userId));
-            if (aIsFav && !bIsFav) return -1;
-            if (!aIsFav && bIsFav) return 1;
-            return 0;
-        });
-
-        return res.status(200).json({ success: true, posts });
-    } catch (error) {
-        next(error);
+    if (!currentUserId) {
+      return res.status(401).json({ success: false, message: "Unauthorized access." });
     }
+
+    // Fetch current user's friends and favorites
+    const currentUser = await User.findById(currentUserId);
+    if (!currentUser) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    const friendIds = currentUser.friends || [];
+    const favouriteIds = currentUser.favouriteIds || [];
+    const allowedUserIds = [...friendIds, ...favouriteIds];
+
+    // Fetch posts created by friends or favorites
+    const posts = await Post.find({ userId: { $in: allowedUserIds } })
+      .populate("userId", "username name profileImage")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Mark posts created by favorites
+    const formattedPosts = posts.map(post => ({
+      ...post,
+      isFavorite: favouriteIds.some(id => id.toString() === post.userId?._id?.toString())
+    }));
+
+    return res.status(200).json({
+      success: true,
+      posts: formattedPosts
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
-app.get('/api/get/post/:id', checkTokenValidity, async (req, res, next) => {
+router.get('/api/get/post/:id', checkTokenValidity, async (req, res, next) => {
     try{
         const postId = req.params.id;
 
@@ -157,12 +152,12 @@ app.get('/api/get/post/:id', checkTokenValidity, async (req, res, next) => {
         }
 
         //get comments
-        const comments = await Post.find({postId: post._id})
+        const comments = await Comment.find({ postId: post._id }).sort({ createdAt: -1 });
 
         return res.status(200).json({
             success: true,
             post: post,
-            commments: comments
+            comments: comments
         });
         }catch(error){
             next(error);
@@ -170,7 +165,7 @@ app.get('/api/get/post/:id', checkTokenValidity, async (req, res, next) => {
 });
 
 //create post
-app.post('/api/create/posts', checkTokenValidity, async (req, res, next) => {
+router.post('/api/create/posts', checkTokenValidity, async (req, res, next) => {
     const { caption, image, hashtages } = req.body;
 
     try {
@@ -203,7 +198,7 @@ app.post('/api/create/posts', checkTokenValidity, async (req, res, next) => {
 });
 
 //update post, might have a different one for the likes.
-app.put('/api/update/post/:id', checkTokenValidity, async (req, res, next) => {
+router.put('/api/update/post/:id', checkTokenValidity, async (req, res, next) => {
     const postId = req.params.id;
     const { caption, image, hashtags } = req.body;
 
@@ -252,7 +247,7 @@ app.put('/api/update/post/:id', checkTokenValidity, async (req, res, next) => {
     }
 });
 
-aapp.delete('/api/delete/post/:id', checkTokenValidity, async (req, res, next) => {
+router.delete('/api/delete/post/:id', checkTokenValidity, async (req, res, next) => {
     const postId = req.params.id;
 
     try {
@@ -301,7 +296,7 @@ aapp.delete('/api/delete/post/:id', checkTokenValidity, async (req, res, next) =
 });
 
 //add comments
-app.post('/api/posts/:id/comments', checkTokenValidity, async (req, res, next) => {
+router.post('/api/posts/:id/comments', checkTokenValidity, async (req, res, next) => {
     const postId = req.params.id;
     const { text } = req.body;
 
@@ -344,7 +339,7 @@ app.post('/api/posts/:id/comments', checkTokenValidity, async (req, res, next) =
 });
 
 //get comments
-app.get('/api/posts/:id/comments', checkTokenValidity, async (req, res, next) => {
+router.get('/api/posts/:id/comments', checkTokenValidity, async (req, res, next) => {
     const postId = req.params.id;
 
     try {
@@ -369,7 +364,7 @@ app.get('/api/posts/:id/comments', checkTokenValidity, async (req, res, next) =>
 });
 
 //delete a comment
-app.delete('/api/comments/:id', checkTokenValidity, async (req, res, next) => {
+router.delete('/api/comments/:id', checkTokenValidity, async (req, res, next) => {
     const commentId = req.params.id;
     const userId = req.user.userId;
 
@@ -414,7 +409,7 @@ app.delete('/api/comments/:id', checkTokenValidity, async (req, res, next) => {
 });
 
 //report a post
-app.post('/api/posts/:id/report', checkTokenValidity, async (req, res, next) => {
+router.post('/api/posts/:id/report', checkTokenValidity, async (req, res, next) => {
     const postId = req.params.id;
     const { reason, additionalDetails } = req.body;
     const userId = req.user.userId;
@@ -460,3 +455,5 @@ app.post('/api/posts/:id/report', checkTokenValidity, async (req, res, next) => 
         next(error);
     }
 });
+
+module.exports = router;

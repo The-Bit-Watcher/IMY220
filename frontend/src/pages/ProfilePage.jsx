@@ -1,92 +1,100 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import Header from "../components/common/Header/Header";
-import EditProfileModal from "../components/profile/EditProfileModal";
+import EditProfile from "../components/profile/EditProfile";
 import PostPreview from "../components/common/PostPreview/PostPreview";
-import { AvatarDisplay } from "../utils/AvatarGenerator";
+import { AvatarDisplay } from "../utils/avatarGenerator";
 
 function ProfilePage({ currentUserId }) {
-  const { id } = useParams();
-  const targetUserId = id || currentUserId;
+  const { id: routeUserId } = useParams();
+
+  // Safely extract user ID from localStorage
+  const rawUserData = JSON.parse(localStorage.getItem("currentUser") || "{}");
+  const storedUser = rawUserData.data || rawUserData;
+  const localUserId = storedUser.userId || storedUser._id || currentUserId;
+
+  // Determine target ID: URL param takes priority if available, otherwise local user
+  const targetUserId = routeUserId || localUserId;
 
   const [profileData, setProfileData] = useState(null);
   const [relationshipStatus, setRelationshipStatus] = useState("none");
   const [isFavorite, setIsFavorite] = useState(false);
   const [posts, setPosts] = useState([]);
   const [albums, setAlbums] = useState([]);
-  const [activeTab, setActiveTab] = useState("posts"); // 'posts' | 'albums' | 'friends'
+  const [activeTab, setActiveTab] = useState("posts");
   const [showEdit, setShowEdit] = useState(false);
+  const [loading, setLoading] = useState(true);
 
+  // Fetch Profile Info
   const fetchProfile = useCallback(async () => {
-  try {
-    const token = localStorage.getItem("token");
-    const response = await fetch(`/api/users/${targetUserId}`, {
-      method: "GET",
-      headers: {
+    if (!targetUserId || targetUserId === "1" || targetUserId === "undefined") {
+      console.warn("Invalid targetUserId for fetchProfile:", targetUserId);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`/api/users/${targetUserId}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) throw new Error("Failed to fetch profile");
+
+      const data = await response.json();
+
+      if (data.success) {
+        setProfileData(data.user);
+        setRelationshipStatus(data.relationshipStatus || (routeUserId ? "none" : "self"));
+        setIsFavorite(data.isFavorite || false);
+      }
+    } catch (err) {
+      console.error("Error loading profile:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [targetUserId, routeUserId]);
+
+  // Fetch User Media
+  const fetchUserMedia = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const headers = {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-      },
-    });
+        Authorization: `Bearer ${token}`,
+      };
 
-    if (!response.ok) throw new Error("Failed to fetch profile");
+      const [postsRes, albumsRes] = await Promise.all([
+        fetch(`/api/get/posts/me`, { method: "GET", headers }),
+        fetch(`/api/get/albums/me`, { method: "GET", headers }),
+      ]);
 
-    const data = await response.json();
+      if (!postsRes.ok || !albumsRes.ok) throw new Error("Failed fetching media");
 
-    if (data.success) {
-      setProfileData(data.user);
-      setRelationshipStatus(data.relationshipStatus);
-      setIsFavorite(data.isFavorite || false);
+      const postsData = await postsRes.json();
+      const albumsData = await albumsRes.json();
+
+      if (postsData.success) setPosts(postsData.posts);
+      if (albumsData.success) setAlbums(albumsData.albums);
+    } catch (err) {
+      console.error("Error loading media:", err);
     }
-  } catch (err) {
-    console.error("Error loading profile:", err);
-  }
-}, [targetUserId]);
+  }, []);
 
-//Wrap fetchUserMedia in useCallback
-const fetchUserMedia = useCallback(async () => {
-  try {
-    const token = localStorage.getItem("token");
-    const headers = {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`,
-    };
-
-    const [postsRes, albumsRes] = await Promise.all([
-      fetch(`/api/posts/user/${targetUserId}`, { method: "GET", headers }),
-      fetch(`/api/albums/user/${targetUserId}`, { method: "GET", headers }),
-    ]);
-
-    if (!postsRes.ok || !albumsRes.ok) throw new Error("Failed fetching media");
-
-    const postsData = await postsRes.json();
-    const albumsData = await albumsRes.json();
-
-    if (postsData.success) setPosts(postsData.posts);
-    if (albumsData.success) setAlbums(albumsData.albums);
-  } catch (err) {
-    console.error("Error loading media:", err);
-  }
-}, [targetUserId]);
-
-//Include both functions in the useEffect dependency array
-useEffect(() => {
-  let isMounted = true;
-
-  const loadAllData = async () => {
-    if (isMounted) {
-      await Promise.all([fetchProfile(), fetchUserMedia()]);
+  useEffect(() => {
+    if (targetUserId) {
+      fetchProfile();
+      fetchUserMedia();
     }
-  };
-
-  loadAllData();
-
-  return () => {
-    isMounted = false;
-  };
-}, [fetchProfile, fetchUserMedia]);
+  }, [targetUserId, fetchProfile, fetchUserMedia]);
 
   // Friendship Actions
   const handleFriendAction = async (action) => {
+    if (!targetUserId) return;
     const token = localStorage.getItem("token");
     let endpoint = "";
     let method = "POST";
@@ -113,8 +121,8 @@ useEffect(() => {
     }
   };
 
-  // Toggle Favorite Action
   const toggleFavorite = async () => {
+    if (!targetUserId) return;
     const token = localStorage.getItem("token");
     try {
       const response = await fetch(`/api/friends/favorite/${targetUserId}`, {
@@ -131,16 +139,23 @@ useEffect(() => {
     }
   };
 
-  if (!profileData) return <div className="text-center p-10 text-slate-500">Loading Profile...</div>;
+  if (loading) return <div className="text-center p-10 text-slate-500">Loading Profile...</div>;
 
-  const isSelf = relationshipStatus === "self";
+  if (!profileData) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center">
+        <p className="text-slate-400">Unable to load profile. Please log in again.</p>
+      </div>
+    );
+  }
+
+  const isSelf = !routeUserId || relationshipStatus === "self";
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
-      <Header currentUserId={currentUserId} />
+      <Header currentUserId={localUserId} />
 
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-        {/* Profile Card Header */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 flex flex-col sm:flex-row items-center sm:items-start gap-6">
           <AvatarDisplay username={profileData.username} src={profileData.profilePicture} className="w-24 h-24 text-2xl" />
 
@@ -153,7 +168,6 @@ useEffect(() => {
                 <p className="text-sm text-slate-400">@{profileData.username}</p>
               </div>
 
-              {/* Dynamic Action Buttons */}
               <div>
                 {isSelf ? (
                   <button
@@ -210,7 +224,6 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* Tab Navigation */}
         <div className="flex border-b border-slate-800 gap-4 text-sm font-semibold">
           <button
             onClick={() => setActiveTab("posts")}
@@ -232,9 +245,7 @@ useEffect(() => {
           </button>
         </div>
 
-        {/* Tab Views */}
         <div>
-          {/* Posts Gallery */}
           {activeTab === "posts" && (
             <div className="space-y-4">
               {posts.length === 0 ? (
@@ -245,7 +256,6 @@ useEffect(() => {
             </div>
           )}
 
-          {/* Album Grid Gallery */}
           {activeTab === "albums" && (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {albums.length === 0 ? (
@@ -268,12 +278,11 @@ useEffect(() => {
             </div>
           )}
 
-          {/* Privacy-Gated Friends List */}
           {activeTab === "friends" && (
             <div>
               {!profileData.friends ? (
                 <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 text-center text-slate-400 text-sm">
-                  🔒 Friends list is hidden. You must be friends with @{profileData.username} to view their connections.
+                  Friends list is hidden. You must be friends with @{profileData.username} to view their connections.
                 </div>
               ) : profileData.friends.length === 0 ? (
                 <div className="text-slate-500 text-center py-6 text-sm">No friends added yet.</div>
@@ -294,8 +303,7 @@ useEffect(() => {
           )}
         </div>
 
-        {/* Modal Window */}
-        <EditProfileModal key={profileData?._id || showEdit} user={profileData} show={showEdit} onHide={() => setShowEdit(false)} onUpdated={fetchProfile} />
+        <EditProfile key={profileData?._id || showEdit} user={profileData} show={showEdit} onHide={() => setShowEdit(false)} onUpdated={fetchProfile} />
       </main>
     </div>
   );

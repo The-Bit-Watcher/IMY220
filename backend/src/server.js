@@ -1,14 +1,24 @@
 const express = require("express");
 const mongoose = require("mongoose");
+require("dotenv").config({
+    path: "../.env"
+});
 
 const authRoutes = require("./routes/authRoutes");
-const { connectRedis } = require("./redisClient");
+const albumRoutes = require("./routes/albumRoutes");
+const postRoutes = require("./routes/postRoutes");
+const profileRoutes = require("./routes/profileRoutes");
+const adminRoutes = require("./routes/adminRoutes");
+const { connectRedis } = require("./config/redis");
 
 const app = express();
 
 app.use(express.json());
 
-app.use("/api/auth", authRoutes);
+app.use(authRoutes);
+app.use(profileRoutes);
+app.use(postRoutes);
+app.use(albumRoutes);
 
 async function startServer() {
     try {

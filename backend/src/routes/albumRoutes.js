@@ -1,3 +1,6 @@
+const express = require("express");
+const router = express.Router();
+
 const User = require("../models/User");
 const checkTokenValidity = require("../Middleware/jwtVerifyMiddleware");
 const Comment = require("../models/Comment");
@@ -7,7 +10,7 @@ const {updateHashtagsForAlbum, syncAlbumHashtags} = require("../controllers/albu
 const { default: mongoose } = require("mongoose");
 
 //get all albums
-app.get('/api/get/albums/all', checkTokenValidity, async(req, res, next) => {
+router.get('/api/get/albums/all', checkTokenValidity, async(req, res, next) => {
 
     try{
         const albums = await Album.find().sort({createdAt: -1});
@@ -21,7 +24,7 @@ app.get('/api/get/albums/all', checkTokenValidity, async(req, res, next) => {
 });
 
 //get all users album
-app.get('/api/get/albums/me', checkTokenValidity, async(req, res, next) => {
+router.get('/api/get/albums/me', checkTokenValidity, async(req, res, next) => {
 
     const userId = req.user.userId;
     try{
@@ -48,7 +51,7 @@ app.get('/api/get/albums/me', checkTokenValidity, async(req, res, next) => {
 
 
 //get an albums details and posts
-app.get('/api/get/album/:id', checkTokenValidity, async(req, res, next) => {
+router.get('/api/get/album/:id', checkTokenValidity, async(req, res, next) => {
 
     const albumId = req.params.id;
 
@@ -79,7 +82,7 @@ app.get('/api/get/album/:id', checkTokenValidity, async(req, res, next) => {
         //due to not being production with huge
         //will not handle many required loads.
         res.status(200).json({
-            message: success,
+            success: true,
             album: album,
             posts: posts
         });
@@ -89,7 +92,7 @@ app.get('/api/get/album/:id', checkTokenValidity, async(req, res, next) => {
 });
 
 //delete an album(only delete the album leave posts intact)
-app.delete('/api/delete/album/:id', checkTokenValidity, async(req, res, next) => {
+router.delete('/api/delete/album/:id', checkTokenValidity, async(req, res, next) => {
     const userId = req.user._id;
     const albumId = req.params.id;
 
@@ -127,11 +130,11 @@ app.delete('/api/delete/album/:id', checkTokenValidity, async(req, res, next) =>
         }
 
         //remove the album
-        Album.findByIdandDelete(album._id);
+        await Album.findByIdAndDelete(album._id);
 
         res.status(200).json({
             success: true,
-            message: `${Album.title} deleted successfully`
+            message: `${album.title} deleted successfully`
         })
     }catch(error){
         next(error);
@@ -141,7 +144,7 @@ app.delete('/api/delete/album/:id', checkTokenValidity, async(req, res, next) =>
 
 //create an album
 //hashtags auto updated based on images in it. 
-app.post('/api/create/album', checkTokenValidity, async(req, res, next) => {
+router.post('/api/create/album', checkTokenValidity, async(req, res, next) => {
     //get the name, userId we get from jwt, and post are empty of of now
     //maybe later add a create for when you want to add to a album you can create and add
     //but will be done later if I have the neccessary time
@@ -175,7 +178,7 @@ app.post('/api/create/album', checkTokenValidity, async(req, res, next) => {
 });
 
 //edit album title. Hashtags will be auto changed based on posts in the album.
-app.put('/api/update/album/:id', checkTokenValidity, async (req, res, next) => {
+router.put('/api/update/album/:id', checkTokenValidity, async (req, res, next) => {
     const {title, description, hashtags} = req.body;
     const albumId = req.params.id;
     const userId = req.user.userId;
@@ -231,7 +234,7 @@ app.put('/api/update/album/:id', checkTokenValidity, async (req, res, next) => {
 });
 
 //add to an album
-app.post('/api/add/post', checkTokenValidity, async (req, res, next) => {
+router.post('/api/add/post', checkTokenValidity, async (req, res, next) => {
     const {postId, albumId} = req.body;
     const userId = req.user.userId;
 
@@ -287,7 +290,7 @@ app.post('/api/add/post', checkTokenValidity, async (req, res, next) => {
 });
 
 //remove from an album
-app.post('/api/remove/album/:id', checkTokenValidity, async (req, res, next) => {
+router.post('/api/remove/album/:id', checkTokenValidity, async (req, res, next) => {
     const {postId, albumId} = req.body;
     const userId = req.user.userId;
 
@@ -338,3 +341,5 @@ app.post('/api/remove/album/:id', checkTokenValidity, async (req, res, next) => 
         next(error);
     }
 });
+
+module.exports = router;

@@ -6,6 +6,7 @@ const Comment = require('../models/Comment');
 const Album = require('../models/Albums');
 const checkTokenValidity = require('../Middleware/jwtVerifyMiddleware');
 
+
 // Middleware to enforce Admin role
 const verifyAdmin = (req, res, next) => {
     if (!req.user || req.user.role !== 'admin') {
@@ -14,7 +15,7 @@ const verifyAdmin = (req, res, next) => {
     next();
 };
 
-// 1. Get all reported posts with aggregated reasons
+//  Get all reported posts with aggregated reasons
 router.get('/api/admin/reports', checkTokenValidity, verifyAdmin, async (req, res, next) => {
     try {
         const reports = await Report.find()
@@ -28,7 +29,7 @@ router.get('/api/admin/reports', checkTokenValidity, verifyAdmin, async (req, re
     }
 });
 
-// 2. Dismiss reports for a post (Keep post, remove reports)
+// Dismiss reports for a post (Keep post, remove reports)
 router.delete('/api/admin/reports/post/:postId', checkTokenValidity, verifyAdmin, async (req, res, next) => {
     try {
         await Report.deleteMany({ postId: req.params.postId });
@@ -38,7 +39,7 @@ router.delete('/api/admin/reports/post/:postId', checkTokenValidity, verifyAdmin
     }
 });
 
-// 3. Admin Delete Post (Cascade delete post, comments, reports)
+// Admin Delete Post (Cascade delete post, comments, reports)
 router.delete('/api/admin/posts/:postId', checkTokenValidity, verifyAdmin, async (req, res, next) => {
     const { postId } = req.params;
     try {
