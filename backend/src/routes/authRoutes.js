@@ -32,6 +32,7 @@ router.post("/api/login", async (req, res, next) => {
     const token = createJWT({
       userId: existingUser._id,
       email: existingUser.email,
+      role: existingUser.role,
     });
 
     return res.status(200).json({
@@ -40,6 +41,9 @@ router.post("/api/login", async (req, res, next) => {
         userId: existingUser._id,
         email: existingUser.email,
         username: existingUser.username,
+        name: existingUser.name,
+        profileImage: existingUser.profileImage,
+        role: existingUser.role,
         token: token,
       },
     });

@@ -48,7 +48,7 @@ router.delete('/api/admin/posts/:postId', checkTokenValidity, verifyAdmin, async
         await Report.deleteMany({ postId });
 
         // Update albums containing this post
-        await Album.updateMany({ posts: postId }, { $pull: { posts: postId } });
+        await Album.updateMany({ postId: postId }, { $pull: { postId: postId } });
 
         return res.status(200).json({ success: true, message: "Post removed by admin successfully." });
     } catch (error) {

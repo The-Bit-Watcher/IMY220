@@ -1,15 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import Logout from '../Logout/LogOut';
 import { AvatarDisplay } from '../../../utils/avatarGenerator';
+import { getStoredUser } from '../../../utils/session';
 
 function Header() {
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
 
-  // Retrieve user directly from localStorage
-  const rawUserData = JSON.parse(localStorage.getItem("currentUser") || "{}");
-  const currentUser = rawUserData.data || rawUserData;
+  // Retrieve user from localStorage, and refresh when the profile is edited
+  const [currentUser, setCurrentUser] = useState(getStoredUser);
+  useEffect(() => {
+    const refresh = () => setCurrentUser(getStoredUser());
+    window.addEventListener('currentUserUpdated', refresh);
+    return () => window.removeEventListener('currentUserUpdated', refresh);
+  }, []);
 
   const linkClass = ({ isActive }) =>
     `text-sm font-medium transition-colors ${
@@ -35,6 +40,9 @@ function Header() {
             <NavLink to="/profile" className={linkClass}>
               Profile
             </NavLink>
+            <NavLink to="/create" className={linkClass}>
+              + Create
+            </NavLink>
           </nav>
 
           <div className="hidden md:flex items-center gap-4">
@@ -44,7 +52,7 @@ function Header() {
             >
               <AvatarDisplay 
                 username={currentUser?.username || currentUser?.name || 'User'} 
-                src={currentUser?.profilePicture} 
+                src={currentUser?.profileImage} 
                 className="w-8 h-8"
               />
               <span className="text-xs font-semibold text-slate-200">
@@ -73,8 +81,9 @@ function Header() {
 
       {isOpen && (
         <div className="md:hidden bg-slate-900 border-b border-slate-800 px-4 pt-2 pb-4 space-y-3">
-          <NavLink to="/home" className={`block ${linkClass}`}>Home</NavLink>
-          <NavLink to="/profile" className={`block ${linkClass}`}>Profile</NavLink>
+          <NavLink to="/home" className={(s) => `block ${linkClass(s)}`}>Home</NavLink>
+          <NavLink to="/profile" className={(s) => `block ${linkClass(s)}`}>Profile</NavLink>
+          <NavLink to="/create" className={(s) => `block ${linkClass(s)}`}>+ Create</NavLink>
 
           <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
             <div 
@@ -83,7 +92,7 @@ function Header() {
             >
               <AvatarDisplay 
                 username={currentUser?.username || currentUser?.name || 'User'} 
-                src={currentUser?.profilePicture} 
+                src={currentUser?.profileImage} 
                 className="w-8 h-8"
               />
               <span className="text-xs font-semibold text-slate-200">
