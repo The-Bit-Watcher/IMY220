@@ -7,8 +7,6 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { redisClient } = require("../config/redis");
 
-const checkTokenValidity = require("../Middleware/jwtVerifyMiddleware");
-
 // LOGIN ENDPOINT
 router.post("/api/login", async (req, res, next) => {
   const { email, password } = req.body;
@@ -32,6 +30,7 @@ router.post("/api/login", async (req, res, next) => {
     const token = createJWT({
       userId: existingUser._id,
       email: existingUser.email,
+      role: existingUser.role,
     });
 
     return res.status(200).json({
@@ -40,6 +39,9 @@ router.post("/api/login", async (req, res, next) => {
         userId: existingUser._id,
         email: existingUser.email,
         username: existingUser.username,
+        name: existingUser.name,
+        profileImage: existingUser.profileImage,
+        role: existingUser.role,
         token: token,
       },
     });
@@ -51,7 +53,6 @@ router.post("/api/login", async (req, res, next) => {
 
 // SIGNUP ENDPOINT
 router.post("/api/signup", async (req, res) => {
-  // 1. Destructure 'name' along with username, email, and password
   const { username, name, email, password } = req.body;
 
   try {
@@ -64,7 +65,6 @@ router.post("/api/signup", async (req, res) => {
     const salt = await bcrypt.genSalt(saltRounds);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // 2. Pass 'name' into User.create()
     const newUser = await User.create({
       username,
       name: name || username, // Fallback to username if name isn't provided

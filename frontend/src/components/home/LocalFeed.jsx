@@ -27,6 +27,14 @@ function LocalFeed({ filterOptions = {} }) {
           }
         });
 
+        // Expired/invalid token, or user no longer exists (e.g. after re-seeding)
+        if (response.status === 401 || response.status === 403 || response.status === 404) {
+          localStorage.removeItem('token');
+          localStorage.removeItem('currentUser');
+          navigate('/');
+          return;
+        }
+
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -42,14 +50,14 @@ function LocalFeed({ filterOptions = {} }) {
     };
 
     fetchLocalPosts();
-  }, []);
+  }, [navigate]);
 
   const processedPosts = useMemo(() => {
     return posts.filter(post => {
-      // 1. Safety Filter: Hide posts with > 2 reports
+      // Safety Filter: Hide posts with > 2 reports
       if (post.reports && post.reports > 2) return false;
 
-      // 2. Search Term Filter
+      // Search Term Filter
       if (searchTerm) {
         const query = searchTerm.toLowerCase();
         const matchesTitle = post.title?.toLowerCase().includes(query);
@@ -57,7 +65,7 @@ function LocalFeed({ filterOptions = {} }) {
         if (!matchesTitle && !matchesCaption) return false;
       }
 
-      // 3. Hashtag Filter
+      // Hashtag Filter
       if (hashtagFilter) {
         const cleanTag = hashtagFilter.replace(/^#/, '').toLowerCase();
         const matchesTag = post.hashtags?.some(tag => tag.toLowerCase().includes(cleanTag)) ||
@@ -65,7 +73,7 @@ function LocalFeed({ filterOptions = {} }) {
         if (!matchesTag) return false;
       }
 
-      // 4. Timeframe Filter
+      // Timeframe Filter
       if (timeframe !== 'all') {
         const postDate = new Date(post.createdAt || 0);
         const now = new Date();
