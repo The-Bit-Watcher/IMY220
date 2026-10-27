@@ -1,14 +1,13 @@
 const jwt = require('jsonwebtoken');
 const crypto = require("crypto");
 
-function createJWT({userId, email, role = "user"}) {
+function createJWT({userId, email}) {
   let token;
   try{
   token = jwt.sign(
               {
                   userId: userId,
-                  email: email,
-                  role: role
+                  email: email
               },
               process.env.JWT_SECRET,
               { 

@@ -28,13 +28,6 @@ const PostSchema = new mongoose.Schema(
             type: Number,
             default: 0
         },
-        // Who liked the post, so a user can only like once and can unlike
-        likedBy: [
-            {
-                type: mongoose.Schema.Types.ObjectId,
-                ref: "User"
-            }
-        ],
         // Array of Album IDs this post belongs to
         albums: [
             {

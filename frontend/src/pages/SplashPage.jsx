@@ -1,101 +1,258 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import LoginForm from '../components/splash/LoginForm';
-import SignUpForm from '../components/splash/SignUpForm';
-import './SplashPage.css';
-
-const FEATURES = [
-  { title: 'Share photos', text: 'Post images with captions and hashtags in seconds.' },
-  { title: 'Organise albums', text: 'Group your favourite shots, yours or your friends’, into albums.' },
-  { title: 'Friends & favourites', text: 'A local feed of the people you actually care about.' },
-];
 
 function SplashPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('login');
 
-  // Already logged in? Skip the splash.
-  useEffect(() => {
-    if (localStorage.getItem('token')) navigate('/home', { replace: true });
-  }, [navigate]);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  const [signUpUsername, setSignUpUsername] = useState('');
+  const [signUpName, setSignUpName] = useState('');
+  const [signUpEmail, setSignUpEmail] = useState('');
+  const [signUpPassword, setSignUpPassword] = useState('');
+  const [signUpConfirmPassword, setSignUpConfirmPassword] = useState('');
+  const [signUpError, setSignUpError] = useState('');
+  const [signUpSuccess, setSignUpSuccess] = useState('');
+  const [isSigningUp, setIsSigningUp] = useState(false);
+
+  // Real Backend Login Request
+  const handleLoginSubmit = async (e) => {
+    e.preventDefault();
+    setLoginError('');
+
+    if (!loginEmail || !loginPassword) {
+      setLoginError('Please fill in all fields.');
+      return;
+    }
+
+    setIsLoggingIn(true);
+
+    try {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: loginEmail,
+          password: loginPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Invalid login credentials.');
+      }
+      const token = data.data?.token || data.token;
+      // Save user session and token
+      if (token) {
+        localStorage.setItem('token', token);
+      }
+      localStorage.setItem('currentUser', JSON.stringify(data.user || data || data.data));
+
+      navigate('/home');
+    } catch (err) {
+      console.error('Login error:', err);
+      setLoginError(err.message || 'Server connection failed.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  // Real Backend Sign Up Request
+  const handleSignUpSubmit = async (e) => {
+    e.preventDefault();
+    setSignUpError('');
+    setSignUpSuccess('');
+
+    const nameToSend = signUpName.trim() !== '' ? signUpName : signUpUsername;
+
+    if (!signUpUsername || !signUpEmail || !signUpPassword) {
+      setSignUpError('All required fields must be filled.');
+      return;
+    }
+
+    if (signUpPassword !== signUpConfirmPassword) {
+      setSignUpError('Passwords do not match.');
+      return;
+    }
+
+    setIsSigningUp(true);
+
+    try {
+      const response = await fetch('/api/signup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: signUpUsername,
+          name: signUpName,
+          email: signUpEmail,
+          password: signUpPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Registration failed.');
+      }
+
+      setSignUpSuccess('Account created successfully! Auto-logging you in...');
+      const token = data.data?.token || data.token;
+      if (token) {
+        localStorage.setItem('token', token);
+      }
+      localStorage.setItem('currentUser', JSON.stringify(data.user || data || data.data));
+
+      setTimeout(() => {
+        navigate('/home');
+      }, 1200);
+    } catch (err) {
+      console.error('Sign up error:', err);
+      setSignUpError(err.message || 'Server error during registration.');
+    } finally {
+      setIsSigningUp(false);
+    }
+  };
 
   return (
-    <div className="splash min-h-screen bg-slate-950 text-slate-100 text-left">
-      <main className="max-w-6xl mx-auto px-4 py-12 md:py-20 grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
-        {/* Hero */}
-        <section className="space-y-6">
-          <span className="inline-block text-xs font-semibold uppercase tracking-widest text-indigo-400">
-            Welcome to LifeSocialCapture
-          </span>
-          <h1 className="splash-hero-title">Connect. Share. Build together.</h1>
-          <p className="text-slate-400 text-base max-w-md">
-            A community platform for sharing images with the people who matter.
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => setActiveTab('signup')}
-              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-semibold"
-            >
-              Join the community
-            </button>
-            <a href="#features" className="px-5 py-2.5 border border-slate-700 hover:bg-slate-800 rounded-xl text-sm font-semibold text-slate-200">
-              Explore features
-            </a>
-          </div>
-        </section>
-
-        {/* Auth card */}
-        <section className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
-          <div className="grid grid-cols-2 border-b border-slate-800" role="tablist">
-            {[
-              ['login', 'Log In'],
-              ['signup', 'Sign Up'],
-            ].map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                role="tab"
-                aria-selected={activeTab === key}
-                onClick={() => setActiveTab(key)}
-                className={`py-3 text-sm font-semibold transition-colors ${
-                  activeTab === key ? 'text-white bg-slate-800/70 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                {label}
+    <div>
+      <div>
+        <div>
+          <div>
+            <span>Welcome to LifeSocialCapture</span>
+            <h1>Connect. Share. Build Together.</h1>
+            <p>A community platform for sharing images.</p>
+            <div className="flex flex-wrap gap-4">
+              <a href="#features">Explore Features</a>
+              <button onClick={() => setActiveTab('signup')}>
+                Join Community
               </button>
-            ))}
+            </div>
           </div>
 
-          <div className="p-6">
-            {activeTab === 'login' ? <LoginForm /> : <SignUpForm />}
+          <div>
+            <div>
+              <div>
+                <button onClick={() => setActiveTab('login')}>Log In</button>
+                <button onClick={() => setActiveTab('signup')}>Sign Up</button>
+              </div>
 
-            <p className="mt-4 text-xs text-slate-500 text-center">
-              {activeTab === 'login' ? (
-                <>No account yet?{' '}
-                  <button type="button" onClick={() => setActiveTab('signup')} className="text-indigo-400 hover:underline">Sign up</button>
-                </>
-              ) : (
-                <>Already have an account?{' '}
-                  <button type="button" onClick={() => setActiveTab('login')} className="text-indigo-400 hover:underline">Log in</button>
-                </>
-              )}
-            </p>
+              <div className="p-6">
+                {activeTab === 'login' && (
+                  <form onSubmit={handleLoginSubmit}>
+                    <h4>Welcome Back</h4>
+                    {loginError && <div className="text-red-500">{loginError}</div>}
+
+                    <div>
+                      <label>Email Address</label>
+                      <input
+                        type="email"
+                        placeholder="xx@example.com"
+                        value={loginEmail}
+                        onChange={(e) => setLoginEmail(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label>Password</label>
+                      <input
+                        type="password"
+                        placeholder="*****"
+                        value={loginPassword}
+                        onChange={(e) => setLoginPassword(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <button type="submit" disabled={isLoggingIn}>
+                      {isLoggingIn ? 'Logging in...' : 'Log In'}
+                    </button>
+                  </form>
+                )}
+
+                {activeTab === 'signup' && (
+                  <form onSubmit={handleSignUpSubmit} className="space-y-3">
+                    <h4>Create Account</h4>
+                    {signUpError && <div className="text-red-500">{signUpError}</div>}
+                    {signUpSuccess && <div className="text-green-500">{signUpSuccess}</div>}
+
+                    <div>
+                      <label>Full Name</label>
+                      <input
+                        type="text"
+                        placeholder="Peter John"
+                        value={signUpName}
+                        onChange={(e) => setSignUpName(e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label>Username</label>
+                      <input
+                        type="text"
+                        placeholder="shaun_dev"
+                        value={signUpUsername}
+                        onChange={(e) => setSignUpUsername(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label>Email Address</label>
+                      <input
+                        type="email"
+                        placeholder="xxxx@example.com"
+                        value={signUpEmail}
+                        onChange={(e) => setSignUpEmail(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <div>
+                        <label>Password</label>
+                        <input
+                          type="password"
+                          placeholder="*****"
+                          value={signUpPassword}
+                          onChange={(e) => setSignUpPassword(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label>Confirm</label>
+                        <input
+                          type="password"
+                          placeholder="*****"
+                          value={signUpConfirmPassword}
+                          onChange={(e) => setSignUpConfirmPassword(e.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <button type="submit" disabled={isSigningUp}>
+                      {isSigningUp ? 'Creating Account...' : 'Register Account'}
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
           </div>
-        </section>
-      </main>
+        </div>
+      </div>
 
-      <section id="features" className="max-w-6xl mx-auto px-4 pb-16 grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {FEATURES.map((f) => (
-          <div key={f.title} className="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
-            <h3 className="text-sm font-bold text-slate-100 mb-1">{f.title}</h3>
-            <p className="text-xs text-slate-400 leading-relaxed">{f.text}</p>
-          </div>
-        ))}
-      </section>
-
-      <footer className="border-t border-slate-800 py-6 text-center text-xs text-slate-500">
-        © LifeSocialCapture. All rights reserved.
+      <footer>
+        <p>© LifeSocialCapture. All rights reserved.</p>
       </footer>
     </div>
   );

@@ -27,14 +27,6 @@ function GlobalFeed({ filterOptions = {} }) {
           }
         });
 
-        // Expired/invalid token, or user no longer exists (e.g. after re-seeding)
-        if (response.status === 401 || response.status === 403 || response.status === 404) {
-          localStorage.removeItem('token');
-          localStorage.removeItem('currentUser');
-          navigate('/');
-          return;
-        }
-
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -51,7 +43,7 @@ function GlobalFeed({ filterOptions = {} }) {
     };
 
     fetchGlobalPosts();
-  }, [navigate]);
+  }, []);
 
   const processedPosts = useMemo(() => {
     return posts.filter(post => {

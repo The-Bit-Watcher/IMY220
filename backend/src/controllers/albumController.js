@@ -1,5 +1,4 @@
 const Album = require("../models/Albums");
-const Post = require("../models/Post");
 
 //this will be where get auto updated, removal is but of a difficulity
 //don't know if I'll add a auto delete
@@ -15,7 +14,7 @@ return album;
 
 const syncAlbumHashtags = async (album) => {
     // Find all posts currently in the album
-    const posts = await Post.find({ _id: { $in: album.postId } });
+    const posts = await Post.find({ _id: { $in: album.posts } });
     
     // Combine all hashtags and remove duplicates using Set
     const allTags = posts.flatMap(p => p.hashtags || []);

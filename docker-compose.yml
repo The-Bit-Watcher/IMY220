@@ -1,18 +1,4 @@
 services:
-  redis:
-    image: redis:7-alpine
-    # Persist revoked-token keys across restarts
-    command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
   backend:
     build: ./backend
     ports:
@@ -20,16 +6,12 @@ services:
     volumes:
       - ./backend:/app
       - /app/node_modules
-    # DB_URL (Atlas), JWT_SECRET, SALT_ROUNDS come from backend/.env
-    env_file:
-      - ./backend/.env
     environment:
-      # Inside Docker, Redis is reachable by its service name, not localhost
+      - MONGODB_URI=mongodb://mongodb:27017/social_app
       - REDIS_URL=redis://redis:6379
     depends_on:
-      redis:
-        condition: service_healthy   # don't start until Redis answers PING (connectRedis would crash otherwise)
-    restart: unless-stopped
+      - mongodb
+      - redis
 
   frontend:
     build: ./frontend
@@ -39,22 +21,21 @@ services:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      # Vite's dev proxy forwards /api here ("localhost" inside this container is the frontend itself)
-      - VITE_API_URL=http://backend:5000
-      # File change events don't cross the Windows -> container mount; poll instead so hot reload works
-      - VITE_USE_POLLING=true
+      - VITE_API_URL=http://localhost:5000
     depends_on:
       - backend
 
-  # Optional local MongoDB. Only used if DB_URL in .env points at mongodb://mongodb:27017/<db>
   mongodb:
     image: mongo:latest
-    profiles: ["localdb"]
     ports:
       - "27017:27017"
     volumes:
       - mongodb_data:/data/db
 
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+
 volumes:
   mongodb_data:
-  redis_data:
