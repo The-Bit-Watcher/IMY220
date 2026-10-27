@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import Header from '../components/common/Header/Header';
 import SearchBar from '../components/home/SearchInput';
@@ -14,7 +15,8 @@ function HomePage() {
   const [activeTab, setActiveTab] = useState('local');
 
   const [sortBy, setSortBy] = useState("newest"); // newest || comments
-  const [hashtagFilter, setHashtagFilter] = useState("");
+  const [searchParams] = useSearchParams();
+  const [hashtagFilter, setHashtagFilter] = useState(searchParams.get("tag") || "");
   const [timeframe, setTimeframe] = useState("all"); // all || week || month
 
   const filterOptions = useMemo(() => ({

@@ -1,73 +1,49 @@
-import React, { useEffect, useState } from 'react';
-import PostPreview from '../common/PostPreview/PostPreview';
-import { posts } from '../../data/mockPosts';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
-function UserPosts({ userId }) {
-  const [arr, setArr] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+// Compact grid of a user's posts: square thumbnail + caption + author
+function UserPostsList({ posts = [], emptyText = "No posts yet." }) {
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchUserPosts = async () => {
-      await Promise.resolve();
-
-      if (!isMounted) return;
-      setIsLoading(true);
-
-      try {
-        const userPosts = posts.filter(post => post.userId === userId);
-        
-        if (isMounted) {
-          setArr(userPosts);
-        }
-      } catch (error) {
-        console.error(error);
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    fetchUserPosts();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [userId]);
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-8 text-gray-500 text-sm gap-2">
-        <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        <span>Loading posts...</span>
-      </div>
-    );
-  }
-
-  if (arr.length === 0) {
-    return (
-      <div className="bg-white rounded-lg border border-gray-200 p-6 text-center text-gray-500 text-sm my-3">
-        This user hasn't posted anything yet.
-      </div>
-    );
+  if (posts.length === 0) {
+    return <div className="text-slate-500 text-center py-6 text-sm">{emptyText}</div>;
   }
 
   return (
-    <div className="space-y-4 my-3">
-      {arr.map(post => (
-        <PostPreview 
-          key={post.id} 
-          title={post.title} 
-          username={post.username} 
-          dates={post.dates || post.createdAt} 
-          likes={post.likes} 
-          img={post.img || post.image} 
-        />
-      ))}
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      {posts.map((post) => {
+        const author = post.userId && typeof post.userId === 'object' ? post.userId : null;
+        return (
+          <button
+            key={post._id}
+            type="button"
+            onClick={() => navigate(`/post/${post._id}`)}
+            className="group text-left bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-indigo-500/60 transition-colors"
+          >
+            <div className="aspect-square bg-slate-950 overflow-hidden">
+              {post.image ? (
+                <img
+                  src={post.image}
+                  alt={post.caption}
+                  loading="lazy"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-xs text-slate-600">No image</div>
+              )}
+            </div>
+            <div className="p-2">
+              <p className="text-xs font-semibold text-slate-200 truncate">{post.caption || 'Untitled'}</p>
+              <div className="flex justify-between items-center mt-0.5 text-[10px] text-slate-500">
+                <span className="truncate">@{author?.username || 'unknown'}</span>
+                <span className="shrink-0">♥ {post.likes || 0}</span>
+              </div>
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 }
 
-export default UserPosts;
+export default UserPostsList;

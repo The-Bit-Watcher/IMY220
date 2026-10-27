@@ -1,4 +1,6 @@
 // seed.js
+const path = require("path");
+require("dotenv").config({ path: path.resolve(__dirname, "../../../.env") }); // backend/.env
 const mongoose = require("mongoose");
 const bcrypt = require("bcrypt"); // Make sure bcrypt or bcryptjs is installed
 
@@ -10,7 +12,11 @@ const Comment = require("../Comment");
 const Report = require("../Report");
 
 // MongoDB Connection URI - Update with your actual MongoDB connection string
-const MONGO_URI = process.env.DB_URL || "mongodb://127.0.0.1:27017/your_database_name";
+const MONGO_URI = process.env.DB_URL;
+if (!MONGO_URI) {
+  console.error("DB_URL is not set. Put it in backend/.env (same file server.js reads).");
+  process.exit(1);
+}
 
 const seedDatabase = async () => {
   try {
@@ -56,6 +62,27 @@ const seedDatabase = async () => {
       sentRequests: []
     });
 
+    const adminUser = await User.create({
+      username: "admin",
+      name: "Site Admin",
+      email: "admin@example.com",
+      hashedPassword: hashedPassword,
+      role: "admin"
+    });
+
+    // A third user with no friends yet: shows up in John/Jane's recommendations
+    const user3 = await User.create({
+      username: "mikebrown",
+      name: "Mike Brown",
+      email: "mike@example.com",
+      hashedPassword: hashedPassword,
+      bio: "Street photographer.",
+      location: "Johannesburg, South Africa",
+      friends: [user2._id]
+    });
+    user2.friends.push(user3._id);
+    await user2.save();
+
     // Update user1's friends array to link user2 back
     user1.friends.push(user2._id);
     await user1.save();
@@ -86,6 +113,7 @@ const seedDatabase = async () => {
       title: "Nature Trips", // Matches Album schema[cite: 22]
       description: "Collection of photography from hiking trips.", // Matches Album schema[cite: 22]
       userId: user1._id, // Matches Album schema[cite: 22]
+      hashtags: post1.hashtags, // album tags are auto-filled from its posts
       postId: [post1._id] // Matches Album schema[cite: 22]
     });
 
